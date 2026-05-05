@@ -53,6 +53,8 @@ function readRelayListenEnv() {
     process.env.RELAY_DISABLE_BOOTSTRAP === 'true' || process.env.RELAY_DISABLE_BOOTSTRAP === '1'
   const disableAutoNAT =
     process.env.RELAY_DISABLE_AUTONAT === 'true' || process.env.RELAY_DISABLE_AUTONAT === '1'
+  const disableDHT =
+    process.env.RELAY_DISABLE_DHT === 'true' || process.env.RELAY_DISABLE_DHT === '1'
 
   const pubsubTopics = (
     process.env.PUBSUB_TOPICS ||
@@ -76,6 +78,7 @@ function readRelayListenEnv() {
     disableQuic,
     disableBootstrap,
     disableAutoNAT,
+    disableDHT,
     pubsubTopics,
   }
 }
@@ -140,9 +143,11 @@ export const createLibp2pConfig = (
         autonat: autoNAT(),
       }),
       dcutr: dcutr(),
-      aminoDHT: kadDHT({
-        protocol: '/ipfs/kad/1.0.0',
-        peerInfoMapper: removePrivateAddressesMapper,
+      ...(!e.disableDHT && {
+        aminoDHT: kadDHT({
+          protocol: '/ipfs/kad/1.0.0',
+          peerInfoMapper: removePrivateAddressesMapper,
+        }),
       }),
       relay: circuitRelayServer({
         hopTimeout: getCircuitRelayHopTimeoutMs(),

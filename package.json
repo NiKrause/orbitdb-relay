@@ -50,7 +50,9 @@
     "prepack": "pnpm run build"
   },
   "overrides": {
-    "it-length-prefixed": "9.1.1"
+    "it-length-prefixed": "9.1.1",
+    "it-length-prefixed-stream": "2.0.6",
+    "it-byte-stream": "2.0.6"
   },
   "publishConfig": {
     "access": "public"
@@ -102,5 +104,12 @@
     "@types/node": "^22.13.1",
     "mocha": "^11.7.2",
     "typescript": "^5.8.3"
+  },
+  "pnpm": {
+    "overrides": {
+      "it-length-prefixed": "9.1.1",
+      "it-length-prefixed-stream": "2.0.6",
+      "it-byte-stream": "2.0.6"
+    }
   }
 }
