@@ -1,0 +1,70 @@
+{
+  "schemaVersion": 1,
+  "id": "orbitdb-relay-pinner",
+  "displayName": "OrbitDB Relay Pinner",
+  "source": {
+    "repository": "external",
+    "subdirectory": "."
+  },
+  "rootfs": {
+    "profile": "orbitdb-relay-pinner",
+    "installMode": "prebaked",
+    "installDir": "/opt/orbitdb-relay-pinner",
+    "binaryPath": "/usr/local/bin/orbitdb-relay-pinner",
+    "dataDir": "/var/lib/orbitdb-relay-pinner",
+    "envFile": "/etc/default/orbitdb-relay-pinner"
+  },
+  "services": {
+    "bootstrap": "orbitdb-relay-pinner-bootstrap.service",
+    "main": "orbitdb-relay-pinner.service",
+    "autotlsRefresh": "orbitdb-relay-pinner-autotls-refresh.service"
+  },
+  "ports": [
+    {
+      "port": 22,
+      "tcp": true,
+      "udp": false,
+      "purpose": "SSH"
+    },
+    {
+      "port": 80,
+      "tcp": true,
+      "udp": false,
+      "purpose": "Temporary setup endpoint"
+    },
+    {
+      "port": 9090,
+      "tcp": true,
+      "udp": false,
+      "purpose": "Metrics and health API"
+    },
+    {
+      "port": 9091,
+      "tcp": true,
+      "udp": false,
+      "purpose": "libp2p TCP"
+    },
+    {
+      "port": 443,
+      "tcp": true,
+      "udp": false,
+      "purpose": "Caddy HTTPS and WSS proxy"
+    },
+    {
+      "port": 9093,
+      "tcp": false,
+      "udp": true,
+      "purpose": "WebRTC direct"
+    },
+    {
+      "port": 9094,
+      "tcp": false,
+      "udp": true,
+      "purpose": "QUIC"
+    }
+  ],
+  "manifest": {
+    "copyTarget": "public/rootfs-manifest.json",
+    "notes": "The OrbitDB relay image prebakes Node.js, production dependencies, and Caddy into the qcow2, delays first relay start until Aleph host port mappings are known, exposes a temporary setup endpoint on port 80, and uses Caddy on port 443 to front both HTTPS helper routes and secure libp2p WSS transport for the configured proxy hostname."
+  }
+}

@@ -1,0 +1,75 @@
+name: Aleph Rootfs Build, Publish & Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Publish the rootfs image to Aleph IPFS
+        type: boolean
+        default: false
+      deploy_vm:
+        description: Deploy a new Aleph VM instance after publishing
+        type: boolean
+        default: false
+      enable_caddy_proxy:
+        description: Configure the guest with Caddy HTTPS/WSS proxy
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-rootfs:
+    uses: NiKrause/shared-aleph-tooling/.github/workflows/aleph-rootfs-build-publish-deploy.yml@main
+    with:
+      profile: orbitdb-relay-pinner
+      rootfs_contract_path: aleph/contract.json
+      publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
+    secrets:
+      ALEPH_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
+
+  deploy-vm:
+    needs: build-rootfs
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      inputs.deploy_vm &&
+      inputs.publish &&
+      needs.build-rootfs.outputs.rootfs_item_hash != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout shared tooling
+        uses: actions/checkout@v6
+        with:
+          repository: NiKrause/shared-aleph-tooling
+          ref: main
+
+      - name: Deploy Aleph VM instance
+        uses: ./.github/actions/aleph-vm-deploy
+        with:
+          mode: deploy
+          profile: orbitdb-relay-pinner
+          name: orbitdb-relay-pinner
+          aleph_private_key: ${{ secrets.ALEPH_PRIVATE_KEY }}
+          rootfs_item_hash: ${{ needs.build-rootfs.outputs.rootfs_item_hash }}
+          rootfs_version: ${{ needs.build-rootfs.outputs.rootfs_version }}
+          rootfs_size_mib: '20480'
+          vcpus: '1'
+          memory_mib: '2048'
+          enable_caddy_proxy: ${{ inputs.enable_caddy_proxy && 'true' || 'false' }}
+          auto_configure: 'true'
+          verify_reachability: 'true'
+          publish_port_forwards: 'true'
+          ssh_public_key: ${{ secrets.SSH_PUBLIC_KEY }}
+          required_ports_json: |
+            [
+              {"port": 22, "tcp": true, "udp": false},
+              {"port": 80, "tcp": true, "udp": false},
+              {"port": 443, "tcp": true, "udp": false},
+              {"port": 9090, "tcp": true, "udp": false},
+              {"port": 9091, "tcp": true, "udp": false},
+              {"port": 9093, "tcp": false, "udp": true},
+              {"port": 9094, "tcp": false, "udp": true}
+            ]
