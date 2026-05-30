@@ -54,6 +54,7 @@ jobs:
           profile: orbitdb-relay-pinner
           name: orbitdb-relay-pinner
           aleph_private_key: ${{ secrets.ALEPH_PRIVATE_KEY }}
+          channel: ALEPH-CLOUDSOLUTIONS
           rootfs_item_hash: ${{ needs.build-rootfs.outputs.rootfs_item_hash }}
           rootfs_version: ${{ needs.build-rootfs.outputs.rootfs_version }}
           rootfs_size_mib: '20480'
