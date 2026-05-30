@@ -27,6 +27,7 @@ jobs:
     with:
       profile: orbitdb-relay-pinner
       rootfs_contract_path: aleph/contract.json
+      tooling_ref: 89b12b510714d84b03539d45e43d6aca2ecce389
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
     secrets:
       ALEPH_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
