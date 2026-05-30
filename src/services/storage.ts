@@ -7,6 +7,13 @@ import type { Datastore } from 'interface-datastore'
 
 async function loadOrCreateRelayPrivateKey(datastore: Datastore) {
   const key = new Key('/le-space/relay/private-key')
+  const injectedHex = process.env.RELAY_PRIV_KEY?.trim()
+
+  if (injectedHex) {
+    const injectedKey = privateKeyFromProtobuf(Buffer.from(injectedHex, 'hex'))
+    await datastore.put(key, privateKeyToProtobuf(injectedKey))
+    return injectedKey
+  }
 
   try {
     const bytes = await datastore.get(key)

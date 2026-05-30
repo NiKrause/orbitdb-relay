@@ -162,11 +162,9 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
   const { blockstore, datastore } = storage
 
   let privateKey = storage.privateKey
-  if (isTestMode) {
-    const hex = process.env.TEST_PRIVATE_KEY || process.env.RELAY_PRIV_KEY
-    if (hex) {
-      privateKey = privateKeyFromProtobuf(uint8ArrayFromString(hex, 'hex'))
-    }
+  const injectedPrivateKeyHex = process.env.RELAY_PRIV_KEY || (isTestMode ? process.env.TEST_PRIVATE_KEY : undefined)
+  if (injectedPrivateKeyHex) {
+    privateKey = privateKeyFromProtobuf(uint8ArrayFromString(injectedPrivateKeyHex, 'hex'))
   }
 
   const libp2p = await createLibp2p(
