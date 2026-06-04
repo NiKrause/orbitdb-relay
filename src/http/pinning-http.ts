@@ -286,33 +286,56 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
       return
     }
 
-    if (pathname === '/multiaddrs' && req.method === 'GET') {
-      const libp2p = options.getLibp2p?.() ?? null
-      const all = prioritizeAddresses((libp2p?.getMultiaddrs?.() || []).map((ma) => ma.toString()))
-      const byTransport = {
-        webrtc: all.filter((ma) => ma.includes('/webrtc')),
-        tcp: all.filter((ma) => ma.includes('/tcp/') && !ma.includes('/ws')),
-        websocket: all.filter((ma) => ma.includes('/ws')),
-      }
-      const metricsHttpsInfo = options.getMetricsHttpsInfo?.() ?? null
-      sendJson(res, 200, {
-        peerId: libp2p?.peerId?.toString?.() || null,
-        all,
-        byTransport,
-        best: {
-          webrtc: byTransport.webrtc[0] || null,
-          websocket: byTransport.websocket[0] || null,
-          tcp: byTransport.tcp[0] || null,
-        },
-        autoTlsServingZone:
-          metricsHttpsInfo != null && 'autoTlsServingZone' in metricsHttpsInfo
-            ? (metricsHttpsInfo.autoTlsServingZone as string | null)
-            : null,
-        metricsHttps: metricsHttpsInfo,
-        timestamp: new Date().toISOString(),
-      })
-      return
-    }
+     if (pathname === '/multiaddrs' && req.method === 'GET') {
+       const libp2p = options.getLibp2p?.() ?? null
+       
+       // Check for deployment indicators to determine if we should filter internal addresses
+       const isDeployedMode = Boolean(
+         process.env.PROXY_HOSTNAME?.trim() ||
+         process.env.PUBLIC_IPV4?.trim() ||
+         process.env.EXTERNAL_TCP_PORT?.trim() ||
+         process.env.EXTERNAL_WS_PORT?.trim() ||
+         process.env.EXTERNAL_WEBRTC_PORT?.trim() ||
+         process.env.EXTERNAL_QUIC_PORT?.trim()
+       )
+       
+       const allRaw = (libp2p?.getMultiaddrs?.() || []).map((ma) => ma.toString())
+       let all: string[]
+       
+       if (isDeployedMode) {
+         // Filter out internal-only addresses in deployed mode
+         all = prioritizeAddresses(allRaw.filter(isPublicAddress))
+       } else {
+         // Keep all addresses in development mode
+         all = prioritizeAddresses(allRaw)
+       }
+       
+       const byTransport = {
+         webrtc: all.filter((ma) => ma.includes('/webrtc')),
+         tcp: all.filter((ma) => ma.includes('/tcp/') && !ma.includes('/ws')),
+         websocket: all.filter((ma) => ma.includes('/ws')),
+       }
+       const metricsHttpsInfo = options.getMetricsHttpsInfo?.() ?? null
+       sendJson(res, 200, {
+         peerId: libp2p?.peerId?.toString?.() || null,
+         all,
+         byTransport,
+         best: {
+           webrtc: byTransport.webrtc[0] || null,
+           websocket: byTransport.websocket[0] || null,
+           tcp: byTransport.tcp[0] || null,
+         },
+         autoTlsServingZone:
+           metricsHttpsInfo != null && 'autoTlsServingZone' in metricsHttpsInfo
+             ? (metricsHttpsInfo.autoTlsServingZone as string | null)
+             : null,
+         metricsHttps: metricsHttpsInfo,
+         timestamp: new Date().toISOString(),
+         // Include mode info for debugging
+         deployedMode: isDeployedMode,
+       })
+       return
+     }
 
     if (pinning && pathname === '/pinning/stats' && req.method === 'GET') {
       sendJson(res, 200, pinning.getStats())
