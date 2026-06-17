@@ -1,23 +1,23 @@
 {
   "schemaVersion": 1,
-  "id": "orbitdb-relay-pinner",
-  "displayName": "OrbitDB Relay Pinner",
+  "id": "orbitdb-relay",
+  "displayName": "OrbitDB Relay",
   "source": {
     "repository": "external",
     "subdirectory": "."
   },
   "rootfs": {
-    "profile": "orbitdb-relay-pinner",
+    "profile": "orbitdb-relay",
     "installMode": "prebaked",
-    "installDir": "/opt/orbitdb-relay-pinner",
-    "binaryPath": "/usr/local/bin/orbitdb-relay-pinner",
-    "dataDir": "/var/lib/orbitdb-relay-pinner",
-    "envFile": "/etc/default/orbitdb-relay-pinner"
+    "installDir": "/opt/orbitdb-relay",
+    "binaryPath": "/usr/local/bin/orbitdb-relay",
+    "dataDir": "/var/lib/orbitdb-relay",
+    "envFile": "/etc/default/orbitdb-relay"
   },
   "services": {
-    "bootstrap": "orbitdb-relay-pinner-bootstrap.service",
-    "main": "orbitdb-relay-pinner.service",
-    "autotlsRefresh": "orbitdb-relay-pinner-autotls-refresh.service"
+    "bootstrap": "orbitdb-relay-bootstrap.service",
+    "main": "orbitdb-relay.service",
+    "autotlsRefresh": "orbitdb-relay-autotls-refresh.service"
   },
   "ports": [
     {

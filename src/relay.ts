@@ -155,8 +155,7 @@ function attachOrbitdbHeadsStreamLogging(libp2p: any) {
 export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime> {
   const isTestMode = Boolean(opts.testMode)
   const debugProtocols = mergeDebugProtocolOptions(readDebugProtocolsFromEnv(), opts.debugProtocols)
-  const storageDir =
-    opts.storageDir || process.env.DATASTORE_PATH || process.env.RELAY_DATASTORE_PATH || './orbitdb/pinning-service'
+  const storageDir = opts.storageDir || process.env.DATASTORE_PATH || process.env.RELAY_DATASTORE_PATH || './orbitdb/relay'
 
   const storage = await initializeStorage(storageDir)
   const { blockstore, datastore } = storage

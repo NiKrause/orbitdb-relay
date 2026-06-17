@@ -1,0 +1,15 @@
+# Optional systemd drop-in so the relay user may bind WebSockets on port 80 (< 1024).
+# Install:
+#   sudo mkdir -p /etc/systemd/system/orbitdb-relay.service.d
+#   sudo cp deploy/orbitdb-relay-ws-port80.conf.example \
+#     /etc/systemd/system/orbitdb-relay.service.d/ws-port80.conf
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart orbitdb-relay
+#
+# Also set RELAY_WS_PORT=80 and fix VITE_APPEND_ANNOUNCE (…/tcp/80/ws) in /etc/default/orbitdb-relay.
+
+[Service]
+# Required with User=… when the main unit has NoNewPrivileges=true (otherwise caps are ignored).
+NoNewPrivileges=false
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE

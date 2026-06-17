@@ -1,0 +1,30 @@
+[Unit]
+Description=OrbitDB relay service (Helia/libp2p, AutoTLS)
+Documentation=https://github.com/NiKrause/orbitdb-relay/blob/main/docs/systemd-deployment.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=orbitdb-relay
+Group=orbitdb-relay
+WorkingDirectory=/opt/orbitdb-relay
+
+# Environment variables: copy deploy/orbitdb-relay.env.example to /etc/default/orbitdb-relay
+EnvironmentFile=-/etc/default/orbitdb-relay
+
+# Node 22+ required (see package.json engines).
+ExecStart=/usr/bin/node /opt/orbitdb-relay/node_modules/orbitdb-relay/dist/cli.js
+
+Restart=on-failure
+RestartSec=10
+
+# Hardening (adjust if you hit permission issues with the datastore path)
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=true
+ProtectHome=true
+ReadWritePaths=/var/lib/orbitdb-relay
+
+[Install]
+WantedBy=multi-user.target

@@ -1,6 +1,6 @@
 # Relay Media Pinning Logic
 
-This document explains how `orbitdb-relay-pinner` pins IPFS media CIDs while syncing OrbitDB databases.
+This document explains how `orbitdb-relay` pins IPFS media CIDs while syncing OrbitDB databases.
 
 ## Goal
 

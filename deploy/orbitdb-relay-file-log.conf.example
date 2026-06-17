@@ -1,0 +1,19 @@
+# Append all stdout/stderr to a file (in addition to or instead of journald for app output).
+# systemd opens the file before switching User=, so /var/log/... works.
+#
+#   sudo mkdir -p /var/log/orbitdb-relay
+#   sudo touch /var/log/orbitdb-relay/relay.log
+#   sudo chown orbitdb-relay:orbitdb-relay /var/log/orbitdb-relay /var/log/orbitdb-relay/relay.log
+#   sudo chmod 750 /var/log/orbitdb-relay
+#   sudo cp deploy/orbitdb-relay-file-log.conf.example \
+#     /etc/systemd/system/orbitdb-relay.service.d/file-log.conf
+#   sudo systemctl daemon-reload
+#   sudo systemctl restart orbitdb-relay
+#
+# Follow: sudo tail -f /var/log/orbitdb-relay/relay.log
+#
+# Pair with verbose env vars in /etc/default/orbitdb-relay (see deploy/orbitdb-relay.env.example).
+
+[Service]
+StandardOutput=append:/var/log/orbitdb-relay/relay.log
+StandardError=append:/var/log/orbitdb-relay/relay.log

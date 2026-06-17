@@ -14,7 +14,7 @@ async function linkConsumerDependencyTree(consumerDir) {
   await mkdir(consumerNodeModules, { recursive: true })
 
   const links = [
-    ['orbitdb-relay-pinner', join(repoRoot)],
+    ['orbitdb-relay', join(repoRoot)],
     ['libp2p', join(repoRoot, 'node_modules', 'libp2p')],
     ['datastore-level', join(repoRoot, 'node_modules', 'datastore-level')],
     ['blockstore-level', join(repoRoot, 'node_modules', 'blockstore-level')],
@@ -33,7 +33,7 @@ describe('package consumer libp2p service integration', function () {
   let tempRoot
 
   before(async () => {
-    tempRoot = await mkdtemp(join(tmpdir(), 'relay-pinner-consumer-'))
+    tempRoot = await mkdtemp(join(tmpdir(), 'relay-consumer-'))
   })
 
   after(async () => {
@@ -49,7 +49,7 @@ describe('package consumer libp2p service integration', function () {
       join(consumerDir, 'package.json'),
       JSON.stringify(
         {
-          name: 'relay-pinner-consumer-smoke',
+          name: 'relay-consumer-smoke',
           private: true,
           type: 'module',
         },
@@ -80,7 +80,7 @@ import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
 import { webSockets } from '@libp2p/websockets'
 
-import { orbitdbReplicationService } from 'orbitdb-relay-pinner'
+import { orbitdbReplicationService } from 'orbitdb-relay'
 
 const storageDir = join(process.cwd(), 'consumer-runtime')
 await mkdir(storageDir, { recursive: true })

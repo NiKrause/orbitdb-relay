@@ -1,6 +1,6 @@
 # systemd deployment (Linux relay host)
 
-This guide installs **`orbitdb-relay-pinner`** under **systemd** on a Linux VPS or bare-metal host that may also run **Kubo**, without **nginx** (or any other reverse proxy) for libp2p TLS. **Secure WebSockets** come from **AutoTLS** (`@ipshipyard/libp2p-auto-tls`): a certificate for **`<peerId>.libp2p.direct`** via [registration.libp2p.direct](https://registration.libp2p.direct) and Let’s Encrypt DNS-01 (see the upstream walkthrough: [libp2p/js-libp2p-example-auto-tls](https://github.com/libp2p/js-libp2p-example-auto-tls)).
+This guide installs **`orbitdb-relay`** under **systemd** on a Linux VPS or bare-metal host that may also run **Kubo**, without **nginx** (or any other reverse proxy) for libp2p TLS. **Secure WebSockets** come from **AutoTLS** (`@ipshipyard/libp2p-auto-tls`): a certificate for **`<peerId>.libp2p.direct`** via [registration.libp2p.direct](https://registration.libp2p.direct) and Let’s Encrypt DNS-01 (see the upstream walkthrough: [libp2p/js-libp2p-example-auto-tls](https://github.com/libp2p/js-libp2p-example-auto-tls)).
 
 > **From your laptop:** SSH in and run the steps below (or use `deploy/install-on-server.sh` from this repo). Example second relay host: **`ssh root@relay2.seidenwege.com`**. Automated agents in CI sandboxes often **cannot** resolve or reach your private relay hostname.
 
@@ -32,13 +32,13 @@ The [AutoTLS example](https://github.com/libp2p/js-libp2p-example-auto-tls) expe
 3. **Identify** (and usually **identify push**) plus **keychain** for persistent ACME/account keys.
 4. **`autoTLS()`** — on servers, **`autoConfirmAddress: true`** matches the example’s “auto-confirm” path so addresses are trusted without waiting on extra AutoNAT rounds.
 
-`orbitdb-relay-pinner` already wires **TCP**, **WebSockets**, **WebRTC**, **noise**, **yamux**, **identify** / **identifyPush**, **keychain**, **autoNAT**, **amino DHT** (`/ipfs/kad/1.0.0`), and **`autoTLS({ autoConfirmAddress: true })`** in `src/config/libp2p.ts`. **Persistent datastore** stores the relay key and libp2p state under `DATASTORE_PATH`.
+`orbitdb-relay` already wires **TCP**, **WebSockets**, **WebRTC**, **noise**, **yamux**, **identify** / **identifyPush**, **keychain**, **autoNAT**, **amino DHT** (`/ipfs/kad/1.0.0`), and **`autoTLS({ autoConfirmAddress: true })`** in `src/config/libp2p.ts`. **Persistent datastore** stores the relay key and libp2p state under `DATASTORE_PATH`.
 
 Operational requirement on your side: **firewall** and **`VITE_APPEND_ANNOUNCE`** must reflect the **same** public IP and **28191–28193** ports so the node’s advertised addresses match what the internet can dial.
 
 ## Prerequisites
 
-- **Node.js ≥ 22** ([`engines` in package.json](https://github.com/NiKrause/orbitdb-relay-pinner/blob/main/package.json)).
+- **Node.js ≥ 22** ([`engines` in package.json](https://github.com/NiKrause/orbitdb-relay/blob/main/package.json)).
 - Outbound HTTPS to Let’s Encrypt and `registration.libp2p.direct`.
 - Inbound rules for `28191/tcp`, `28192/tcp`, `28193/udp` (and optionally `28190/tcp` only if you scrape metrics remotely).
 
@@ -57,34 +57,34 @@ As **root** on the server, after copying this repository (or at least `deploy/`)
 bash deploy/install-on-server.sh
 ```
 
-The script creates the service user, installs the npm package under `/opt/orbitdb-relay-pinner`, writes `/etc/default/orbitdb-relay-pinner` (attempting to detect public IPv4), installs the systemd unit, and enables the service. **Review** the generated `/etc/default/orbitdb-relay-pinner` before relying on production certs.
+The script creates the service user, installs the npm package under `/opt/orbitdb-relay`, writes `/etc/default/orbitdb-relay` (attempting to detect public IPv4), installs the systemd unit, and enables the service. **Review** the generated `/etc/default/orbitdb-relay` before relying on production certs.
 
 ## Manual install
 
 ### 1. System user and directories
 
 ```bash
-sudo mkdir -p /opt/orbitdb-relay-pinner /var/lib/orbitdb-relay-pinner
+sudo mkdir -p /opt/orbitdb-relay /var/lib/orbitdb-relay
 if ! id orbitdb-relay &>/dev/null; then
-  sudo useradd --system --home /var/lib/orbitdb-relay-pinner --create-home --shell /usr/sbin/nologin orbitdb-relay
+  sudo useradd --system --home /var/lib/orbitdb-relay --create-home --shell /usr/sbin/nologin orbitdb-relay
 fi
-sudo chown -R orbitdb-relay:orbitdb-relay /var/lib/orbitdb-relay-pinner
+sudo chown -R orbitdb-relay:orbitdb-relay /var/lib/orbitdb-relay
 ```
 
 ### 2. Install the package under `/opt`
 
 ```bash
-sudo tee /opt/orbitdb-relay-pinner/package.json >/dev/null <<'EOF'
+sudo tee /opt/orbitdb-relay/package.json >/dev/null <<'EOF'
 {
   "private": true,
   "type": "module",
   "dependencies": {
-    "orbitdb-relay-pinner": "^0.9.1"
+    "orbitdb-relay": "^0.9.1"
   }
 }
 EOF
-sudo chown -R orbitdb-relay:orbitdb-relay /opt/orbitdb-relay-pinner
-sudo -u orbitdb-relay bash -lc 'cd /opt/orbitdb-relay-pinner && npm install --omit=dev'
+sudo chown -R orbitdb-relay:orbitdb-relay /opt/orbitdb-relay
+sudo -u orbitdb-relay bash -lc 'cd /opt/orbitdb-relay && npm install --omit=dev'
 ```
 
 If scoped packages fail to resolve, see [README](../README.md).
@@ -92,14 +92,14 @@ If scoped packages fail to resolve, see [README](../README.md).
 ### 3. Environment file
 
 ```bash
-sudo cp deploy/orbitdb-relay-pinner.env.example /etc/default/orbitdb-relay-pinner
-sudo chmod 640 /etc/default/orbitdb-relay-pinner
-sudo chown root:orbitdb-relay /etc/default/orbitdb-relay-pinner
+sudo cp deploy/orbitdb-relay.env.example /etc/default/orbitdb-relay
+sudo chmod 640 /etc/default/orbitdb-relay
+sudo chown root:orbitdb-relay /etc/default/orbitdb-relay
 ```
 
-Edit `/etc/default/orbitdb-relay-pinner`:
+Edit `/etc/default/orbitdb-relay`:
 
-1. **`DATASTORE_PATH=/var/lib/orbitdb-relay-pinner`**
+1. **`DATASTORE_PATH=/var/lib/orbitdb-relay`**
 2. **`VITE_APPEND_ANNOUNCE`** — set to your **public IPv4** and ports **28191–28193**. Example for **`relay2.seidenwege.com`** (or **`relay.seidenwege.com`**) at `203.0.113.7`:
 
   ```bash
@@ -128,11 +128,11 @@ Edit `/etc/default/orbitdb-relay-pinner`:
 ### 4. systemd unit
 
 ```bash
-sudo cp deploy/orbitdb-relay-pinner.service /etc/systemd/system/orbitdb-relay-pinner.service
+sudo cp deploy/orbitdb-relay.service /etc/systemd/system/orbitdb-relay.service
 sudo systemctl daemon-reload
-sudo systemctl enable --now orbitdb-relay-pinner
-sudo systemctl status orbitdb-relay-pinner
-sudo journalctl -u orbitdb-relay-pinner -f
+sudo systemctl enable --now orbitdb-relay
+sudo systemctl status orbitdb-relay
+sudo journalctl -u orbitdb-relay -f
 ```
 
 ### 5. Firewall (example: `ufw`)
@@ -169,16 +169,16 @@ AutoTLS terminates TLS **inside libp2p** for WSS. Nginx would not replace the **
 
 ## WebSocket listener on port 80
 
-Yes: set **`RELAY_WS_PORT=80`** in `/etc/default/orbitdb-relay-pinner`. **AutoTLS** will then request/announce certificates for the WS listener on **80** as well (same `libp2p.direct` flow).
+Yes: set **`RELAY_WS_PORT=80`** in `/etc/default/orbitdb-relay`. **AutoTLS** will then request/announce certificates for the WS listener on **80** as well (same `libp2p.direct` flow).
 
 **Important details:**
 
-1. **Privileged ports:** On Linux, ports **below 1024** need **`CAP_NET_BIND_SERVICE`**. The base unit sets **`NoNewPrivileges=true`**; for a **non-root** `User=`, systemd then **ignores** `AmbientCapabilities=`, so binding fails with **`errno=13` (EACCES)** on TCP or UDP (often first on **WebRTC UDP**). Install a drop-in that sets **`NoNewPrivileges=false`** **and** the capability — use **`deploy/orbitdb-relay-pinner-low-ports.conf.example`** (or **`orbitdb-relay-pinner-ws-port80.conf.example`** for WS-on-80 only):
+1. **Privileged ports:** On Linux, ports **below 1024** need **`CAP_NET_BIND_SERVICE`**. The base unit sets **`NoNewPrivileges=true`**; for a **non-root** `User=`, systemd then **ignores** `AmbientCapabilities=`, so binding fails with **`errno=13` (EACCES)** on TCP or UDP (often first on **WebRTC UDP**). Install a drop-in that sets **`NoNewPrivileges=false`** **and** the capability — use **`deploy/orbitdb-relay-low-ports.conf.example`** (or **`orbitdb-relay-ws-port80.conf.example`** for WS-on-80 only):
 
    ```bash
-   sudo mkdir -p /etc/systemd/system/orbitdb-relay-pinner.service.d
-   sudo cp deploy/orbitdb-relay-pinner-low-ports.conf.example \
-     /etc/systemd/system/orbitdb-relay-pinner.service.d/low-ports.conf
+   sudo mkdir -p /etc/systemd/system/orbitdb-relay.service.d
+   sudo cp deploy/orbitdb-relay-low-ports.conf.example \
+     /etc/systemd/system/orbitdb-relay.service.d/low-ports.conf
    sudo systemctl daemon-reload
    ```
 
@@ -202,7 +202,7 @@ If **`node` aborts** with a native stack through **`node::crypto::CipherJob::…
 
 **Mitigations** (pick one or combine; restart the service after changes):
 
-1. **Serialize libuv’s pool** (strongest dampener for races; default pool size is 4): in `/etc/default/orbitdb-relay-pinner` set  
+1. **Serialize libuv’s pool** (strongest dampener for races; default pool size is 4): in `/etc/default/orbitdb-relay` set  
    **`UV_THREADPOOL_SIZE=1`**  
    If **DNS or `fs`** feels slow, try **`8`** or **`16`** instead (trade-off vs. parallelism).
 
@@ -216,7 +216,7 @@ If you can reproduce on a staging host, consider opening an issue with **Node ve
 
 ## Verbose logs and log files
 
-OrbitDB sync, media CID extraction, and pin steps are controlled by **`src/config/logging.ts`** (see **`AGENTS.md`**). Typical production flags in **`/etc/default/orbitdb-relay-pinner`**:
+OrbitDB sync, media CID extraction, and pin steps are controlled by **`src/config/logging.ts`** (see **`AGENTS.md`**). Typical production flags in **`/etc/default/orbitdb-relay`**:
 
 | Variable | Effect |
 |----------|--------|
@@ -227,24 +227,24 @@ OrbitDB sync, media CID extraction, and pin steps are controlled by **`src/confi
 | **`LOG_LEVEL_PEER=true`** | **`peer:connect`**; identify failures on **`console.error`** |
 | **`LOG_LEVEL_DATABASE=true`** | Failed sync / failed pin on **`console.error`** |
 
-**Log file:** With **`StandardOutput=append:`** / **`StandardError=append:`** (see **`deploy/orbitdb-relay-pinner-file-log.conf.example`**), app output goes to e.g. **`/var/log/orbitdb-relay-pinner/relay.log`**. Node often **block-buffers** when stdout is not a TTY, so **`tail -f`** can lag until the buffer fills. Optional: **`deploy/orbitdb-relay-pinner-line-buffer.conf.example`** wraps **`stdbuf -oL -eL`** around **`node`** (may not suit all native stacks—see comments in that file).
+**Log file:** With **`StandardOutput=append:`** / **`StandardError=append:`** (see **`deploy/orbitdb-relay-file-log.conf.example`**), app output goes to e.g. **`/var/log/orbitdb-relay/relay.log`**. Node often **block-buffers** when stdout is not a TTY, so **`tail -f`** can lag until the buffer fills. Optional: **`deploy/orbitdb-relay-line-buffer.conf.example`** wraps **`stdbuf -oL -eL`** around **`node`** (may not suit all native stacks—see comments in that file).
 
 **Follow:**
 
 ```bash
-sudo tail -f /var/log/orbitdb-relay-pinner/relay.log
+sudo tail -f /var/log/orbitdb-relay/relay.log
 # optional: still see systemd unit messages
-sudo journalctl -u orbitdb-relay-pinner -f
+sudo journalctl -u orbitdb-relay -f
 ```
 
 ## Repo artifacts
 
 | File | Purpose |
 |------|---------|
-| `deploy/orbitdb-relay-pinner.service` | systemd unit |
-| `deploy/orbitdb-relay-pinner.env.example` | env template (`2819x` ports + logging hints) |
-| `deploy/orbitdb-relay-pinner-low-ports.conf.example` | drop-in for ports **below 1024** (`NoNewPrivileges=false` + bind cap) |
-| `deploy/orbitdb-relay-pinner-ws-port80.conf.example` | same idea when only **WS** is on **80** |
-| `deploy/orbitdb-relay-pinner-file-log.conf.example` | append stdout/stderr to **`/var/log/.../relay.log`** |
-| `deploy/orbitdb-relay-pinner-line-buffer.conf.example` | **`stdbuf -oL -eL`** for line-buffered logs |
+| `deploy/orbitdb-relay.service` | systemd unit |
+| `deploy/orbitdb-relay.env.example` | env template (`2819x` ports + logging hints) |
+| `deploy/orbitdb-relay-low-ports.conf.example` | drop-in for ports **below 1024** (`NoNewPrivileges=false` + bind cap) |
+| `deploy/orbitdb-relay-ws-port80.conf.example` | same idea when only **WS** is on **80** |
+| `deploy/orbitdb-relay-file-log.conf.example` | append stdout/stderr to **`/var/log/.../relay.log`** |
+| `deploy/orbitdb-relay-line-buffer.conf.example` | **`stdbuf -oL -eL`** for line-buffered logs |
 | `deploy/install-on-server.sh` | optional one-shot installer (root) |

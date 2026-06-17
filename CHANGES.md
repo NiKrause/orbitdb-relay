@@ -11,7 +11,7 @@
 
 ### Release note
 
-This is a minor release that expands `orbitdb-relay-pinner` from a reusable OrbitDB replication service into a more complete embeddable relay toolkit. Consumers can now opt into shared debug protocols, reuse the standard pinning and IPFS HTTP surface directly, and rely on the same pinned-first gateway semantics used by the full relay runtime.
+This is a minor release that expands `orbitdb-relay` from a reusable OrbitDB replication service into a more complete embeddable relay toolkit. Consumers can now opt into shared debug protocols, reuse the standard pinning and IPFS HTTP surface directly, and rely on the same pinned-first gateway semantics used by the full relay runtime.
 
 ## v0.8.0
 

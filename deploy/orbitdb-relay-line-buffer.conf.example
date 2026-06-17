@@ -1,5 +1,5 @@
 # Optional: line-buffer stdout/stderr so logs show up quickly in files (Node/weald often block-buffers non-TTY).
-# Install as e.g. /etc/systemd/system/orbitdb-relay-pinner.service.d/line-buffer.conf
+# Install as e.g. /etc/systemd/system/orbitdb-relay.service.d/line-buffer.conf
 # Requires: /usr/bin/stdbuf (coreutils).
 #
 # Warning: `stdbuf` uses LD_PRELOAD; on some hosts it has interacted badly with native addons (odd
@@ -7,4 +7,4 @@
 
 [Service]
 ExecStart=
-ExecStart=/usr/bin/stdbuf -oL -eL /usr/bin/node /opt/orbitdb-relay-pinner/node_modules/orbitdb-relay-pinner/dist/cli.js
+ExecStart=/usr/bin/stdbuf -oL -eL /usr/bin/node /opt/orbitdb-relay/node_modules/orbitdb-relay/dist/cli.js

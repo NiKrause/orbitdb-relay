@@ -1,17 +1,17 @@
 {
-  "name": "orbitdb-relay-pinner",
+  "name": "orbitdb-relay",
   "version": "0.9.1",
   "private": false,
   "type": "module",
-  "description": "OrbitDB relay + pinning/sync service for Helia/libp2p stacks.",
+  "description": "OrbitDB relay with media pinning and sync for Helia/libp2p stacks.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/NiKrause/orbitdb-relay-pinner.git"
+    "url": "git+https://github.com/NiKrause/orbitdb-relay.git"
   },
   "bugs": {
-    "url": "https://github.com/NiKrause/orbitdb-relay-pinner/issues"
+    "url": "https://github.com/NiKrause/orbitdb-relay/issues"
   },
-  "homepage": "https://github.com/NiKrause/orbitdb-relay-pinner#readme",
+  "homepage": "https://github.com/NiKrause/orbitdb-relay#readme",
   "keywords": [
     "orbitdb",
     "libp2p",
@@ -40,7 +40,7 @@
     }
   },
   "bin": {
-    "orbitdb-relay-pinner": "dist/cli.js"
+    "orbitdb-relay": "dist/cli.js"
   },
   "scripts": {
     "start": "DEBUG=le-space:relay:* node dist/cli.js",

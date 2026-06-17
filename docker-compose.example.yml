@@ -1,12 +1,12 @@
 services:
-  orbitdb-relay-pinner:
+  orbitdb-relay:
     # This uses a plain Node runtime image and runs the published npm package via npx.
     # If you publish a dedicated container image for this service, replace image+command.
     image: node:22-bookworm-slim
-    container_name: orbitdb-relay-pinner
+    container_name: orbitdb-relay
     restart: unless-stopped
     command: >
-      sh -lc "npx -y orbitdb-relay-pinner@latest"
+      sh -lc "npx -y orbitdb-relay@latest"
     environment:
       DATASTORE_PATH: /data
       METRICS_PORT: "9090"

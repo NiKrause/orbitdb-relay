@@ -2,7 +2,7 @@
 
 This package can be used in two ways:
 
-- `startRelay()` for the full relay-pinner runtime
+- `startRelay()` for the full relay runtime
 - `orbitdbReplicationService()` for mounting the OrbitDB replication + Helia pinning logic inside an existing libp2p node
 
 It also exports:
@@ -21,19 +21,19 @@ In the default `startRelay()` runtime, those debug protocols stay disabled unles
 Published package:
 
 ```bash
-npm install orbitdb-relay-pinner
+npm install orbitdb-relay
 ```
 
 If you need this branch before it is published:
 
 ```bash
-npm install github:NiKrause/orbitdb-relay-pinner#feat/libp2p-orbitdb-replication-service
+npm install github:NiKrause/orbitdb-relay#feat/libp2p-orbitdb-replication-service
 ```
 
 Local checkout:
 
 ```bash
-npm install ../path/to/orbitdb-relay-pinner
+npm install ../path/to/orbitdb-relay
 ```
 
 ## What Your Project Still Provides
@@ -71,7 +71,7 @@ import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
 import { webSockets } from '@libp2p/websockets'
 
-import { orbitdbReplicationService } from 'orbitdb-relay-pinner'
+import { orbitdbReplicationService } from 'orbitdb-relay'
 
 const storageDir = './orbitdb-replication-node'
 

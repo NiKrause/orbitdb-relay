@@ -1,10 +1,10 @@
-# AI Agents Guide: `orbitdb-relay-pinner`
+# AI Agents Guide: `orbitdb-relay`
 
 This document is written for AI agents (and humans) making changes to this repo. It focuses on how the service works end-to-end, where to look for behavior, and what to be careful about when extending it.
 
 ## What This Repo Is
 
-`orbitdb-relay-pinner` is a Node.js (ESM) service that:
+`orbitdb-relay` is a Node.js (ESM) service that:
 
 - Boots a libp2p node configured to act as a circuit relay (relay v2 server) with multiple transports (TCP/WS/WebRTC-direct).
 - Creates a Helia instance on top of that libp2p node, backed by LevelDB blockstore/datastore.
@@ -12,7 +12,7 @@ This document is written for AI agents (and humans) making changes to this repo.
 - Listens to pubsub events, opens relevant OrbitDB databases, and processes update events to extract/pin media CIDs.
 - Exposes Prometheus metrics on an HTTP endpoint (`/metrics`).
 
-The primary consumer is the CLI `orbitdb-relay-pinner`, but the library export also exposes `startRelay()` for embedding.
+The primary consumer is the CLI `orbitdb-relay`, but the library export also exposes `startRelay()` for embedding.
 
 ## Quick Map (Entry Points)
 
@@ -25,7 +25,7 @@ The primary consumer is the CLI `orbitdb-relay-pinner`, but the library export a
 `startRelay()` in `src/relay.ts` does:
 
 1. Resolve storage directory:
-   - `opts.storageDir` OR `DATASTORE_PATH` OR `RELAY_DATASTORE_PATH` OR default `./orbitdb/pinning-service`
+   - `opts.storageDir` OR `DATASTORE_PATH` OR `RELAY_DATASTORE_PATH` OR default `./orbitdb/relay`
 2. Initialize storage via `initializeStorage()` in `src/services/storage.ts`:
    - Opens a LevelDB datastore at `<storageDir>/ipfs/data`
    - Opens a LevelDB blockstore at `<storageDir>/ipfs/blocks`

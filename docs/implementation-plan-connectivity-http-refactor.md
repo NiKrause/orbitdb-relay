@@ -1,6 +1,6 @@
 # Connectivity + Pinning HTTP Refactor Plan
 
-This document records the first-pass refactor that turns `orbitdb-relay-pinner` into the canonical home for:
+This document records the first-pass refactor that turns `orbitdb-relay` into the canonical home for:
 
 - `connectivityDebugProtocolsService()` as an opt-in libp2p service
 - reusable PinningHttp request handling for `/health`, `/multiaddrs`, `/pinning/*`, and `/ipfs/*`

@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Run as root on the relay host (e.g. after: ssh root@relay2.seidenwege.com).
-# Installs orbitdb-relay-pinner under systemd with Kubo-disjoint ports 28190–28193.
+# Installs orbitdb-relay under systemd with Kubo-disjoint ports 28190–28193.
 set -euo pipefail
 
 NODE_MIN_MAJOR=22
-INSTALL_ROOT=/opt/orbitdb-relay-pinner
-DATA_DIR=/var/lib/orbitdb-relay-pinner
-ENV_FILE=/etc/default/orbitdb-relay-pinner
-UNIT_DST=/etc/systemd/system/orbitdb-relay-pinner.service
+INSTALL_ROOT=/opt/orbitdb-relay
+DATA_DIR=/var/lib/orbitdb-relay
+ENV_FILE=/etc/default/orbitdb-relay
+UNIT_DST=/etc/systemd/system/orbitdb-relay.service
 
 die() { echo "error: $*" >&2; exit 1; }
 
@@ -25,7 +25,7 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-[[ -f "${SCRIPT_DIR}/orbitdb-relay-pinner.service" ]] || die "missing ${SCRIPT_DIR}/orbitdb-relay-pinner.service (run from repo clone)"
+[[ -f "${SCRIPT_DIR}/orbitdb-relay.service" ]] || die "missing ${SCRIPT_DIR}/orbitdb-relay.service (run from repo clone)"
 
 mkdir -p "${INSTALL_ROOT}" "${DATA_DIR}"
 
@@ -39,7 +39,7 @@ tee "${INSTALL_ROOT}/package.json" >/dev/null <<'EOF'
   "private": true,
   "type": "module",
   "dependencies": {
-    "orbitdb-relay-pinner": "^0.9.1"
+    "orbitdb-relay": "^0.9.1"
   }
 }
 EOF
@@ -64,7 +64,7 @@ fi
 if [[ -f "${ENV_FILE}" ]]; then
   echo "keeping existing ${ENV_FILE} (remove it first to regenerate)"
 else
-  cp "${SCRIPT_DIR}/orbitdb-relay-pinner.env.example" "${ENV_FILE}"
+  cp "${SCRIPT_DIR}/orbitdb-relay.env.example" "${ENV_FILE}"
   chmod 640 "${ENV_FILE}"
   chown root:orbitdb-relay "${ENV_FILE}"
   if [[ -n "${PUBLIC_IP}" ]]; then
@@ -76,12 +76,12 @@ else
   fi
 fi
 
-cp "${SCRIPT_DIR}/orbitdb-relay-pinner.service" "${UNIT_DST}"
+cp "${SCRIPT_DIR}/orbitdb-relay.service" "${UNIT_DST}"
 systemctl daemon-reload
-systemctl enable orbitdb-relay-pinner
-systemctl restart orbitdb-relay-pinner
+systemctl enable orbitdb-relay
+systemctl restart orbitdb-relay
 
 echo ""
-echo "Done. Check: systemctl status orbitdb-relay-pinner"
-echo "Logs: journalctl -u orbitdb-relay-pinner -f"
+echo "Done. Check: systemctl status orbitdb-relay"
+echo "Logs: journalctl -u orbitdb-relay -f"
 echo "Multiaddrs: curl -sS http://127.0.0.1:28190/multiaddrs | jq ."

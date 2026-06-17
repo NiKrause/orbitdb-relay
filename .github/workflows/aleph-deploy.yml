@@ -24,9 +24,9 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/shared-aleph-tooling/.github/workflows/aleph-rootfs-build-publish-deploy.yml@38545321d96046f735b4d762594ea162a33bb226
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@38545321d96046f735b4d762594ea162a33bb226
     with:
-      profile: orbitdb-relay-pinner
+      profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
       tooling_ref: 38545321d96046f735b4d762594ea162a33bb226
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
@@ -42,18 +42,18 @@ jobs:
       needs.build-rootfs.outputs.rootfs_item_hash != ''
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout shared tooling
+      - name: Checkout deployment tooling
         uses: actions/checkout@v6
         with:
-          repository: NiKrause/shared-aleph-tooling
+          repository: NiKrause/relay-button
           ref: 38545321d96046f735b4d762594ea162a33bb226
 
       - name: Deploy Aleph VM instance
         uses: ./.github/actions/aleph-vm-deploy
         with:
           mode: deploy
-          profile: orbitdb-relay-pinner
-          name: orbitdb-relay-pinner
+          profile: orbitdb-relay
+          name: orbitdb-relay
           aleph_private_key: ${{ secrets.ALEPH_PRIVATE_KEY }}
           channel: ALEPH-CLOUDSOLUTIONS
           rootfs_item_hash: ${{ needs.build-rootfs.outputs.rootfs_item_hash }}

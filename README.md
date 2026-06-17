@@ -1,9 +1,9 @@
-# orbitdb-relay-pinner
+# orbitdb-relay
 
-[![Build](https://github.com/NiKrause/orbitdb-relay-pinner/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NiKrause/orbitdb-relay-pinner/actions/workflows/ci.yml?query=branch%3Amain)
-[![Relay media integration](https://github.com/NiKrause/orbitdb-relay-pinner/actions/workflows/relay-media-integration.yml/badge.svg?branch=main)](https://github.com/NiKrause/orbitdb-relay-pinner/actions/workflows/relay-media-integration.yml?query=branch%3Amain)
+[![Build](https://github.com/NiKrause/orbitdb-relay/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/NiKrause/orbitdb-relay/actions/workflows/ci.yml?query=branch%3Amain)
+[![Relay media integration](https://github.com/NiKrause/orbitdb-relay/actions/workflows/relay-media-integration.yml/badge.svg?branch=main)](https://github.com/NiKrause/orbitdb-relay/actions/workflows/relay-media-integration.yml?query=branch%3Amain)
 
-OrbitDB relay + pinning/sync service used by our apps and tests.
+OrbitDB relay used by our apps and tests, including media pinning and sync.
 
 ## AI Agents
 
@@ -20,20 +20,20 @@ See `AGENTS.md` for an architecture and feature guide (entrypoints, data flow, e
 Install:
 
 ```bash
-npm i -g orbitdb-relay-pinner
+npm i -g orbitdb-relay
 ```
 
 Run:
 
 ```bash
-orbitdb-relay-pinner
+orbitdb-relay
 ```
 
 Optional connectivity debug protocols for test tooling are disabled by default in the CLI/runtime. Enable them with env vars before startup:
 
 ```bash
-RELAY_CONNECTIVITY_ECHO_ENABLED=1 orbitdb-relay-pinner
-RELAY_CONNECTIVITY_BULK_ENABLED=1 orbitdb-relay-pinner
+RELAY_CONNECTIVITY_ECHO_ENABLED=1 orbitdb-relay
+RELAY_CONNECTIVITY_BULK_ENABLED=1 orbitdb-relay
 ```
 
 Bulk tuning is also available through `RELAY_CONNECTIVITY_BULK_MAX_FRAME_BYTES`, `RELAY_CONNECTIVITY_BULK_READ_TIMEOUT_MS`, and `RELAY_CONNECTIVITY_BULK_IDLE_TIMEOUT_MS`.
@@ -58,13 +58,13 @@ AutoTLS notes:
 Show AutoTLS logs:
 
 ```bash
-DEBUG='libp2p:auto-tls,libp2p:auto-tls:*,libp2p:websockets:listener' ENABLE_GENERAL_LOGS=1 orbitdb-relay-pinner
+DEBUG='libp2p:auto-tls,libp2p:auto-tls:*,libp2p:websockets:listener' ENABLE_GENERAL_LOGS=1 orbitdb-relay
 ```
 
 If you also want the relay to expose the metrics routes over HTTPS once AutoTLS has provisioned a certificate:
 
 ```bash
-METRICS_HTTPS_ENABLED=1 DEBUG='libp2p:auto-tls,libp2p:auto-tls:*,libp2p:websockets:listener' ENABLE_GENERAL_LOGS=1 orbitdb-relay-pinner
+METRICS_HTTPS_ENABLED=1 DEBUG='libp2p:auto-tls,libp2p:auto-tls:*,libp2p:websockets:listener' ENABLE_GENERAL_LOGS=1 orbitdb-relay
 ```
 
 With those flags enabled, you should see AutoTLS messages such as certificate fetch attempts, reasons it is not fetching yet, and WebSocket HTTPS listener updates.
@@ -72,7 +72,7 @@ With those flags enabled, you should see AutoTLS messages such as certificate fe
 Test mode (deterministic peer id via `TEST_PRIVATE_KEY` or `RELAY_PRIV_KEY`):
 
 ```bash
-orbitdb-relay-pinner --test
+orbitdb-relay --test
 ```
 
 ## Library
@@ -95,7 +95,7 @@ import { LevelDatastore } from 'datastore-level'
 import { LevelBlockstore } from 'blockstore-level'
 import { gossipsub } from '@chainsafe/libp2p-gossipsub'
 import { identify } from '@libp2p/identify'
-import { orbitdbReplicationService } from 'orbitdb-relay-pinner'
+import { orbitdbReplicationService } from 'orbitdb-relay'
 
 const datastore = new LevelDatastore('./tmp/ipfs/data')
 const blockstore = new LevelBlockstore('./tmp/ipfs/blocks')
@@ -127,7 +127,7 @@ Notes:
 
 ## Supported Access Controllers
 
-`orbitdb-relay-pinner` supports the following Access Controller types when opening OrbitDB databases:
+`orbitdb-relay` supports the following Access Controller types when opening OrbitDB databases:
 
 - `orbitdb` (built-in OrbitDB access controller)
 - `orbitdb-deferred` (custom deferred OrbitDB ACL registered by this package)
