@@ -24,11 +24,11 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@74f620181e8ab2e168d502f4fe8484f82e64f4e1
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@b7c504e341694c34d5d35ce55088941f770da3ff
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
-      tooling_ref: 74f620181e8ab2e168d502f4fe8484f82e64f4e1
+      tooling_ref: b7c504e341694c34d5d35ce55088941f770da3ff
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
     secrets:
       ALEPH_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
@@ -46,7 +46,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: NiKrause/relay-button
-          ref: 74f620181e8ab2e168d502f4fe8484f82e64f4e1
+          ref: b7c504e341694c34d5d35ce55088941f770da3ff
 
       - name: Deploy Aleph VM instance
         uses: ./.github/actions/aleph-vm-deploy
