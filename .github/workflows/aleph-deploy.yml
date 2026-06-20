@@ -17,6 +17,14 @@ on:
         description: Configure the guest with Caddy HTTPS/WSS proxy
         type: boolean
         default: true
+      rootfs_item_hash:
+        description: Existing Aleph STORE item hash to deploy without publishing a new rootfs
+        type: string
+        default: ''
+      rootfs_version:
+        description: Version string for an existing rootfs item hash
+        type: string
+        default: ''
 
 permissions:
   actions: read
@@ -36,10 +44,14 @@ jobs:
   deploy-vm:
     needs: build-rootfs
     if: >-
-      github.event_name == 'workflow_dispatch' &&
-      inputs.deploy_vm &&
-      inputs.publish &&
-      needs.build-rootfs.outputs.rootfs_item_hash != ''
+      ${{
+        github.event_name == 'workflow_dispatch' &&
+        inputs.deploy_vm &&
+        (
+          needs.build-rootfs.outputs.rootfs_item_hash != '' ||
+          inputs.rootfs_item_hash != ''
+        )
+      }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout project
@@ -82,8 +94,8 @@ jobs:
           ALEPH_VM_CRN_LIST_URL: https://crns-list.aleph.sh/crns.json
           ALEPH_VM_NAME: orbitdb-relay
           ALEPH_VM_SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
-          ALEPH_VM_ROOTFS_ITEM_HASH: ${{ needs.build-rootfs.outputs.rootfs_item_hash }}
-          ALEPH_VM_ROOTFS_VERSION: ${{ needs.build-rootfs.outputs.rootfs_version }}
+          ALEPH_VM_ROOTFS_ITEM_HASH: ${{ inputs.rootfs_item_hash != '' && inputs.rootfs_item_hash || needs.build-rootfs.outputs.rootfs_item_hash }}
+          ALEPH_VM_ROOTFS_VERSION: ${{ inputs.rootfs_version != '' && inputs.rootfs_version || needs.build-rootfs.outputs.rootfs_version }}
           ALEPH_VM_ROOTFS_SIZE_MIB: '20480'
           ALEPH_VM_CRN_HASH: ''
           ALEPH_VM_PREFERRED_COUNTRY_CODE: DE
