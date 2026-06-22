@@ -25,6 +25,29 @@ on:
         description: Version string for an existing rootfs item hash
         type: string
         default: ''
+      aleph_api_hosts:
+        description: Comma-separated Aleph API hosts to try in order
+        type: string
+        default: 'https://api.aleph.im,https://api2.aleph.im,https://api3.aleph.im'
+      vm_ssh_public_key:
+        description: Optional SSH public key override for the deployed VM
+        type: string
+        default: ''
+      vm_crn_hash:
+        description: Optional target CRN hash for the deployment
+        type: string
+        default: ''
+      vm_placement_strategy:
+        description: Placement mode when no CRN hash is supplied
+        type: choice
+        default: scheduler
+        options:
+          - scheduler
+          - manual
+      retain_successful_deployments:
+        description: Keep only latest N successful published+deployed records
+        type: string
+        default: '2'
 
 permissions:
   actions: read
@@ -32,105 +55,35 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@eabf61ffaea1b24be76048e8bf44f21486166624
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@0c0f84149af9e18bbc8a77a43fe68e892d4fa64e
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
-      tooling_ref: eabf61ffaea1b24be76048e8bf44f21486166624
+      tooling_ref: 0c0f84149af9e18bbc8a77a43fe68e892d4fa64e
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
+      deploy_vm: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_vm || false }}
+      enable_caddy_proxy: ${{ github.event_name != 'workflow_dispatch' || inputs.enable_caddy_proxy }}
+      rootfs_item_hash: ${{ github.event_name == 'workflow_dispatch' && inputs.rootfs_item_hash || '' }}
+      rootfs_version: ${{ github.event_name == 'workflow_dispatch' && inputs.rootfs_version || '' }}
+      vm_api_hosts: ${{ github.event_name == 'workflow_dispatch' && inputs.aleph_api_hosts || 'https://api.aleph.im,https://api2.aleph.im,https://api3.aleph.im' }}
+      vm_name: orbitdb-relay
+      vm_ssh_public_key: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_ssh_public_key || '' }}
+      vm_crn_hash: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_crn_hash || '' }}
+      vm_placement_strategy: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_placement_strategy || 'scheduler' }}
+      vm_vcpus: '1'
+      vm_memory_mib: '2048'
+      vm_rootfs_size_mib: '20480'
+      vm_preferred_country_code: DE
+      vm_geo_crn_limit: '30'
+      vm_max_crn_attempts: '5'
+      vm_channel: ALEPH-CLOUDSOLUTIONS
+      vm_seconds: '30'
+      relay_probe_required_families_json: '["tcp","proxy-wss"]'
+      relay_probe_best_effort_families_json: '["webrtc-direct"]'
+      relay_probe_proxy_wss_host_matchers_json: '[".2n6.me/"]'
+      probe_timeout_ms: '20000'
+      probe_settle_ms: '1500'
+      retain_successful_deployments: ${{ github.event_name == 'workflow_dispatch' && inputs.retain_successful_deployments || '0' }}
     secrets:
       ALEPH_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
-
-  deploy-vm:
-    needs: build-rootfs
-    if: >-
-      ${{
-        github.event_name == 'workflow_dispatch' &&
-        inputs.deploy_vm &&
-        (
-          needs.build-rootfs.outputs.rootfs_item_hash != '' ||
-          inputs.rootfs_item_hash != ''
-        )
-      }}
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout project
-        uses: actions/checkout@v6
-        with:
-          path: project
-
-      - name: Checkout deployment tooling
-        uses: actions/checkout@v6
-        with:
-          repository: NiKrause/relay-button
-          ref: eabf61ffaea1b24be76048e8bf44f21486166624
-          path: tooling
-
-      - name: Set up pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.33.0
-
-      - name: Set up Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: 24.x
-          cache: pnpm
-          cache-dependency-path: tooling/pnpm-lock.yaml
-
-      - name: Remove Caddy web access gate
-        run: node project/scripts/remove-caddy-webaccess-gate.mjs tooling/packages/node/src/deploy-executor.ts
-
-      - name: Install deployment tooling dependencies
-        run: pnpm install --dir "${{ github.workspace }}/tooling" --frozen-lockfile
-
-      - name: Deploy Aleph VM instance
-        working-directory: tooling
-        env:
-          ALEPH_VM_MODE: deploy
-          ALEPH_VM_PROFILE: orbitdb-relay
-          ALEPH_VM_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
-          ALEPH_VM_API_HOST: https://api2.aleph.im
-          ALEPH_VM_CRN_LIST_URL: https://crns-list.aleph.sh/crns.json
-          ALEPH_VM_NAME: orbitdb-relay
-          ALEPH_VM_SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
-          ALEPH_VM_ROOTFS_ITEM_HASH: ${{ inputs.rootfs_item_hash != '' && inputs.rootfs_item_hash || needs.build-rootfs.outputs.rootfs_item_hash }}
-          ALEPH_VM_ROOTFS_VERSION: ${{ inputs.rootfs_version != '' && inputs.rootfs_version || needs.build-rootfs.outputs.rootfs_version }}
-          ALEPH_VM_ROOTFS_SIZE_MIB: '20480'
-          ALEPH_VM_CRN_HASH: ''
-          ALEPH_VM_PREFERRED_COUNTRY_CODE: DE
-          ALEPH_VM_MAX_CRN_ATTEMPTS: '5'
-          ALEPH_VM_VCPUS: '1'
-          ALEPH_VM_MEMORY_MIB: '2048'
-          ALEPH_VM_SECONDS: '30'
-          ALEPH_VM_CHANNEL: ALEPH-CLOUDSOLUTIONS
-          ALEPH_VM_WAIT_ATTEMPTS: '60'
-          ALEPH_VM_WAIT_DELAY_MS: '5000'
-          ALEPH_VM_RUNTIME_ATTEMPTS: '40'
-          ALEPH_VM_RUNTIME_DELAY_MS: '5000'
-          ALEPH_VM_SETUP_ATTEMPTS: '15'
-          ALEPH_VM_SETUP_DELAY_MS: '4000'
-          ALEPH_VM_VERIFY_ATTEMPTS: '25'
-          ALEPH_VM_VERIFY_DELAY_MS: '5000'
-          ALEPH_VM_TCP_TIMEOUT_MS: '5000'
-          ALEPH_VM_HTTP_TIMEOUT_MS: '10000'
-          ALEPH_VM_METADATA_ATTEMPTS: '80'
-          ALEPH_VM_METADATA_DELAY_MS: '3000'
-          ALEPH_VM_METADATA_TIMEOUT_MS: '240000'
-          ALEPH_VM_CONFIGURE_TIMEOUT_MS: '180000'
-          ALEPH_VM_GEO_CRN_LIMIT: '30'
-          ALEPH_VM_ENABLE_CADDY_PROXY: ${{ inputs.enable_caddy_proxy && 'true' || 'false' }}
-          ALEPH_VM_AUTO_CONFIGURE: 'true'
-          ALEPH_VM_VERIFY_REACHABILITY: 'true'
-          ALEPH_VM_PUBLISH_PORT_FORWARDS: 'true'
-          ALEPH_VM_REQUIRED_PORTS_JSON: >-
-            [
-              {"port": 22, "tcp": true, "udp": false},
-              {"port": 80, "tcp": true, "udp": false},
-              {"port": 443, "tcp": true, "udp": false},
-              {"port": 9090, "tcp": true, "udp": false},
-              {"port": 9091, "tcp": true, "udp": false},
-              {"port": 9093, "tcp": false, "udp": true},
-              {"port": 9094, "tcp": false, "udp": true}
-            ]
-        run: node packages/node/src/action-runner.ts
+      VM_SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
