@@ -28,7 +28,7 @@ on:
       aleph_api_hosts:
         description: Comma-separated Aleph API hosts to try in order
         type: string
-        default: 'https://api.aleph.im,https://api2.aleph.im,https://api3.aleph.im'
+        default: 'https://api3.aleph.im,https://api2.aleph.im,https://api.aleph.im'
       vm_ssh_public_key:
         description: Optional SSH public key override for the deployed VM
         type: string
@@ -55,17 +55,17 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@0c0f84149af9e18bbc8a77a43fe68e892d4fa64e
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@63bf350cee6b93408dca478ba9bce1ab4d3197ba
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
-      tooling_ref: 0c0f84149af9e18bbc8a77a43fe68e892d4fa64e
+      tooling_ref: 63bf350cee6b93408dca478ba9bce1ab4d3197ba
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
       deploy_vm: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_vm || false }}
       enable_caddy_proxy: ${{ github.event_name != 'workflow_dispatch' || inputs.enable_caddy_proxy }}
       rootfs_item_hash: ${{ github.event_name == 'workflow_dispatch' && inputs.rootfs_item_hash || '' }}
       rootfs_version: ${{ github.event_name == 'workflow_dispatch' && inputs.rootfs_version || '' }}
-      vm_api_hosts: ${{ github.event_name == 'workflow_dispatch' && inputs.aleph_api_hosts || 'https://api.aleph.im,https://api2.aleph.im,https://api3.aleph.im' }}
+      vm_api_hosts: ${{ github.event_name == 'workflow_dispatch' && inputs.aleph_api_hosts || 'https://api3.aleph.im,https://api2.aleph.im,https://api.aleph.im' }}
       vm_name: orbitdb-relay
       vm_ssh_public_key: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_ssh_public_key || '' }}
       vm_crn_hash: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_crn_hash || '' }}
