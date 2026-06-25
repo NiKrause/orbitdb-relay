@@ -55,11 +55,12 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@004cc40de94be5b912618e049072bd265208ec48
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@v0.6.7
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
-      tooling_ref: 004cc40de94be5b912618e049072bd265208ec48
+      tooling_ref: v0.6.7
+      rootfs_upload_driver: aleph-ipfs
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
       deploy_vm: ${{ github.event_name == 'workflow_dispatch' && inputs.deploy_vm || false }}
       enable_caddy_proxy: ${{ github.event_name != 'workflow_dispatch' || inputs.enable_caddy_proxy }}
