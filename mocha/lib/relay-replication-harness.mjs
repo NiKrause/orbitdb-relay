@@ -12,9 +12,12 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 
 import { createLibp2p } from 'libp2p'
-import { createHelia } from 'helia'
+import { createHeliaLight } from 'helia'
+import { withBitswap } from '@helia/bitswap'
+import { withHTTP } from '@helia/http'
+import { withLibp2p } from '@helia/libp2p'
 import { createOrbitDB } from '@orbitdb/core'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { identify } from '@libp2p/identify'
@@ -25,7 +28,10 @@ import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
 import { webSockets } from '@libp2p/websockets'
 import { CID } from 'multiformats/cid'
-import { sha256 } from 'multiformats/hashes/sha2'
+import { sha256, sha512 } from 'multiformats/hashes/sha2'
+import * as dagCbor from '@ipld/dag-cbor'
+import * as dagJson from '@ipld/dag-json'
+import * as json from 'multiformats/codecs/json'
 import * as raw from 'multiformats/codecs/raw'
 import { fromString as uint8ArrayFromString } from 'uint8arrays/from-string'
 
@@ -53,6 +59,31 @@ export const withTimeout = async (promise, timeoutMs) => {
   ])
 }
 
+const toUint8Array = async (value) => {
+  if (value instanceof Uint8Array) return value
+  if (value instanceof ArrayBuffer) return new Uint8Array(value)
+  if (value != null && typeof value === 'object') {
+    if (value.bytes instanceof Uint8Array) return value.bytes
+    if (typeof value.subarray === 'function') return value.subarray()
+    if (typeof value[Symbol.asyncIterator] === 'function') {
+      const chunks = []
+      for await (const chunk of value) {
+        chunks.push(await toUint8Array(chunk))
+      }
+      const total = chunks.reduce((sum, chunk) => sum + chunk.length, 0)
+      const out = new Uint8Array(total)
+      let offset = 0
+      for (const chunk of chunks) {
+        out.set(chunk, offset)
+        offset += chunk.length
+      }
+      return out
+    }
+    if (typeof value[Symbol.iterator] === 'function') return Uint8Array.from(value)
+  }
+  throw new TypeError(`Unexpected byte value type: ${Object.prototype.toString.call(value)}`)
+}
+
 export const fetchJson = async (url) => {
   const res = await fetch(url)
   const text = await res.text()
@@ -66,6 +97,20 @@ export const fetchJson = async (url) => {
     throw new Error(`HTTP ${res.status}: ${text}`)
   }
   return data
+}
+
+const createHeliaWithLibp2p = (libp2p) => {
+  return withBitswap(
+    withLibp2p(
+      withHTTP(
+        createHeliaLight({
+          codecs: [dagCbor, dagJson, json],
+          hashers: [sha512],
+        }),
+      ),
+      libp2p,
+    ),
+  )
 }
 
 export const createClient = async (orbitdbDirectory) => {
@@ -100,7 +145,7 @@ export const createClient = async (orbitdbDirectory) => {
     },
   })
 
-  const ipfs = await createHelia({ libp2p })
+  const ipfs = await createHeliaWithLibp2p(libp2p).start()
   const orbitdb = await createOrbitDB({ ipfs, directory: orbitdbDirectory })
   return { libp2p, ipfs, orbitdb }
 }
@@ -220,7 +265,7 @@ async function runRelayMediaReplicationScenarioCore(opts) {
   for (const { cid, bytes } of imageBlocks) {
     const fetched = await waitFor(async () => {
       const block = await withTimeout(bob.ipfs.blockstore.get(cid), 1500)
-      return block
+      return await toUint8Array(block)
     }, 120000)
     assert.deepEqual(Buffer.from(fetched), Buffer.from(bytes))
   }

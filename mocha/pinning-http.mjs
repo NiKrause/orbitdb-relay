@@ -33,7 +33,7 @@ describe('PinningHttp request handler', function () {
       pinning: {
         getStats: () => ({ ok: true }),
         getDatabases: () => ({ databases: [], total: 0 }),
-        syncDatabase: async () => ({ ok: true, extractedMediaCids: [] }),
+        syncDatabase: async () => ({ ok: true, extractedMediaCids: [], entryCount: 1, snapshotSource: 'db.all()', lastRecord: { key: 'todo_1' } }),
       },
     })
     const server = http.createServer(handler)

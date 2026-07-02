@@ -374,6 +374,9 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
           receivedUpdate: result.receivedUpdate ?? false,
           fallbackScanUsed: result.fallbackScanUsed ?? false,
           extractedMediaCids: result.extractedMediaCids ?? [],
+          entryCount: result.entryCount ?? null,
+          lastRecord: result.lastRecord ?? null,
+          snapshotSource: result.snapshotSource ?? null,
           ...(result.coalesced ? { coalesced: true } : {}),
         })
       } catch (error: any) {

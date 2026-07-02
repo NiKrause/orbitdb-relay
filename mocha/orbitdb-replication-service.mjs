@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
 import { createLibp2p } from 'libp2p'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { identify } from '@libp2p/identify'

@@ -23,9 +23,13 @@ export type ConnectivityDebugProtocolsServiceInit = {
 }
 
 type StreamLike = {
-  source: AsyncIterable<unknown>
-  sink: (source: AsyncIterable<Uint8Array>) => Promise<void>
+  source?: AsyncIterable<unknown>
+  sink?: (source: AsyncIterable<Uint8Array>) => Promise<void>
+  send?: (buf: Uint8Array) => boolean | void | Promise<boolean | void>
+  onDrain?: () => Promise<void>
+  sendCloseWrite?: () => Promise<void>
   close: () => Promise<void>
+  [Symbol.asyncIterator]?: () => AsyncIterator<unknown>
 }
 
 function chunkToUint8Array(chunk: unknown): Uint8Array {
@@ -58,7 +62,7 @@ class ByteStreamReader {
     private readonly readTimeoutMs: number,
     private readonly idleTimeoutMs: number,
   ) {
-    this.iter = stream.source[Symbol.asyncIterator]()
+    this.iter = getStreamSource(stream)[Symbol.asyncIterator]()
   }
 
   private async nextChunk(): Promise<void> {
@@ -134,9 +138,39 @@ async function readFramedChunk(reader: ByteStreamReader, maxFrameBytes: number):
 const textEncoder = new TextEncoder()
 const textDecoder = new TextDecoder()
 
+function getStreamSource(stream: StreamLike): AsyncIterable<unknown> {
+  if (stream.source != null) return stream.source
+  if (typeof stream[Symbol.asyncIterator] === 'function') return stream as AsyncIterable<unknown>
+  throw new TypeError('Stream has no readable source')
+}
+
+function getIncomingStream(value: { stream?: StreamLike } | StreamLike): StreamLike {
+  return (value as { stream?: StreamLike })?.stream ?? (value as StreamLike)
+}
+
+async function writeChunks(stream: StreamLike, source: AsyncIterable<Uint8Array>): Promise<void> {
+  if (typeof stream.sink === 'function') {
+    await stream.sink(source)
+    return
+  }
+  if (typeof stream.send === 'function') {
+    for await (const chunk of source) {
+      const canSendMore = await stream.send(chunk)
+      if (canSendMore === false && typeof stream.onDrain === 'function') {
+        await stream.onDrain()
+      }
+    }
+    if (typeof stream.sendCloseWrite === 'function') {
+      await stream.sendCloseWrite()
+    }
+    return
+  }
+  throw new TypeError('Stream has no writable sink')
+}
+
 async function readLine(stream: StreamLike): Promise<string> {
   let buf = ''
-  for await (const chunk of stream.source) {
+  for await (const chunk of getStreamSource(stream)) {
     buf += textDecoder.decode(chunkToUint8Array(chunk), { stream: true })
     const idx = buf.indexOf('\n')
     if (idx !== -1) {
@@ -147,7 +181,8 @@ async function readLine(stream: StreamLike): Promise<string> {
 }
 
 async function writeLine(stream: StreamLike, line: string): Promise<void> {
-  await stream.sink(
+  await writeChunks(
+    stream,
     (async function* () {
       yield textEncoder.encode(`${line}\n`)
     })(),
@@ -184,7 +219,8 @@ class ConnectivityDebugProtocolsService {
     }
 
     if (this.init.echo?.enabled) {
-      await libp2p.handle(CONNECTIVITY_ECHO_PROTOCOL, async ({ stream }: { stream: StreamLike }) => {
+      await libp2p.handle(CONNECTIVITY_ECHO_PROTOCOL, async (incoming: { stream?: StreamLike } | StreamLike) => {
+        const stream = getIncomingStream(incoming)
         try {
           const line = await readLine(stream)
           await writeLine(stream, line.length > 0 ? `echo:${line}` : 'echo:(empty)')
@@ -211,10 +247,12 @@ class ConnectivityDebugProtocolsService {
         ? Math.max(1, Math.trunc(this.init.bulk.idleTimeoutMs as number))
         : DEFAULT_BULK_IDLE_TIMEOUT_MS
 
-      await libp2p.handle(CONNECTIVITY_BULK_PROTOCOL, async ({ stream }: { stream: StreamLike }) => {
+      await libp2p.handle(CONNECTIVITY_BULK_PROTOCOL, async (incoming: { stream?: StreamLike } | StreamLike) => {
+        const stream = getIncomingStream(incoming)
         try {
           const reader = new ByteStreamReader(stream, readTimeoutMs, idleTimeoutMs)
-          await stream.sink(
+          await writeChunks(
+            stream,
             (async function* () {
               for (;;) {
                 const payload = await readFramedChunk(reader, maxFrameBytes)

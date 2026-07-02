@@ -17,12 +17,42 @@ function chunkToUint8Array(chunk) {
 
 async function readLine(stream) {
   let buf = ''
-  for await (const chunk of stream.source) {
+  for await (const chunk of getStreamSource(stream)) {
     buf += textDecoder.decode(chunkToUint8Array(chunk), { stream: true })
     const idx = buf.indexOf('\n')
     if (idx !== -1) return buf.slice(0, idx).trim()
   }
   return buf.trim()
+}
+
+function unwrapStream(value) {
+  return value?.stream ?? value
+}
+
+function getStreamSource(stream) {
+  if (stream?.source != null) return stream.source
+  if (typeof stream?.[Symbol.asyncIterator] === 'function') return stream
+  throw new TypeError('Stream has no readable source')
+}
+
+async function writeChunks(stream, source) {
+  if (typeof stream?.sink === 'function') {
+    await stream.sink(source)
+    return
+  }
+  if (typeof stream?.send === 'function') {
+    for await (const chunk of source) {
+      const canSendMore = await stream.send(chunk)
+      if (canSendMore === false && typeof stream.onDrain === 'function') {
+        await stream.onDrain()
+      }
+    }
+    if (typeof stream.sendCloseWrite === 'function') {
+      await stream.sendCloseWrite()
+    }
+    return
+  }
+  throw new TypeError('Stream has no writable sink')
 }
 
 function encodeFrame(payload) {
@@ -51,7 +81,7 @@ async function readExactly(iterator, n) {
 }
 
 async function readFrame(stream) {
-  const iterator = stream.source[Symbol.asyncIterator]()
+  const iterator = getStreamSource(stream)[Symbol.asyncIterator]()
   const lenBuf = await readExactly(iterator, 4)
   const len = new DataView(lenBuf.buffer, lenBuf.byteOffset, 4).getUint32(0, false)
   return await readExactly(iterator, len)
@@ -108,9 +138,11 @@ describe('connectivity debug protocols service', function () {
 
       const addr = server.getMultiaddrs().find((value) => value.toString().includes('/ip4/127.0.0.1/tcp/'))
       assert.ok(addr, 'expected a local listen address')
-      const echoStream = await client.dialProtocol(addr, exports.CONNECTIVITY_ECHO_PROTOCOL)
+      const echoStreamResult = await client.dialProtocol(addr, exports.CONNECTIVITY_ECHO_PROTOCOL)
+      const echoStream = unwrapStream(echoStreamResult)
       try {
-        await echoStream.sink(
+        await writeChunks(
+          echoStream,
           (async function* () {
             yield textEncoder.encode('hello-debug\n')
           })(),
@@ -118,7 +150,7 @@ describe('connectivity debug protocols service', function () {
         const reply = await readLine(echoStream)
         assert.equal(reply, 'echo:hello-debug')
       } finally {
-        await echoStream.close().catch(() => {})
+        await (echoStream.close?.() ?? echoStreamResult.close?.() ?? Promise.resolve()).catch(() => {})
       }
     } finally {
       await client.stop().catch(() => {})

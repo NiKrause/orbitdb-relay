@@ -26,6 +26,12 @@ export type PinningSyncResult = {
   fallbackScanUsed?: boolean
   /** Media CIDs extracted from updates and/or `db.all()` fallback (same field rules as update-driven pinning). */
   extractedMediaCids?: string[]
+  /** Number of rows/entries visible in the relay's local snapshot after sync. */
+  entryCount?: number | null
+  /** Sanitized preview of the last row/entry visible in the relay's local snapshot after sync. */
+  lastRecord?: Record<string, unknown> | null
+  /** Where the relay local snapshot came from, e.g. `db.all()`, `iterator`, or update-event burst. */
+  snapshotSource?: string
   /** True when this request waited on another in-flight sync for the same address. */
   coalesced?: boolean
 }

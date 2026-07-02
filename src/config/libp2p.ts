@@ -5,7 +5,7 @@ import { circuitRelayTransport, circuitRelayServer } from '@libp2p/circuit-relay
 import { identify, identifyPush } from '@libp2p/identify'
 import { webRTC, webRTCDirect } from '@libp2p/webrtc'
 import { webSockets } from '@libp2p/websockets'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
+import { gossipsub } from '@libp2p/gossipsub'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
 import { bootstrap } from '@libp2p/bootstrap'
