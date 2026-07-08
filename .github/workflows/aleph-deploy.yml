@@ -6,11 +6,11 @@ on:
   workflow_dispatch:
     inputs:
       publish:
-        description: Publish the rootfs image to Aleph IPFS
+        description: Optionally publish the rootfs image to Aleph IPFS/STORE. Rootfs artifacts are always uploaded.
         type: boolean
         default: false
       deploy_vm:
-        description: Deploy a new Aleph VM instance after publishing
+        description: Deploy a new Aleph VM instance from a newly published or explicitly supplied rootfs item hash
         type: boolean
         default: false
       enable_caddy_proxy:
@@ -55,12 +55,12 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@v0.6.15
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@v0.6.16
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
       tooling_repository: NiKrause/relay-button
-      tooling_ref: v0.6.15
+      tooling_ref: v0.6.16
       rootfs_upload_driver: aleph-ipfs
       rootfs_require_processed_store: false
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
