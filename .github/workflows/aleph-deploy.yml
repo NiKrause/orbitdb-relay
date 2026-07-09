@@ -29,6 +29,14 @@ on:
         description: Comma-separated Aleph API hosts to try in order
         type: string
         default: 'https://api3.aleph.im,https://api2.aleph.im,https://api.aleph.im'
+      ipfs_add_urls:
+        description: Comma-separated IPFS add endpoints to try in order
+        type: string
+        default: 'https://ipfs-2.aleph.im/api/v0/add,https://ipfs.aleph.cloud/api/v0/add'
+      ipfs_gateway_urls:
+        description: Comma-separated IPFS gateway base URLs to verify uploaded rootfs CIDs
+        type: string
+        default: 'https://ipfs-2.aleph.im/ipfs,https://ipfs.aleph.cloud/ipfs'
       vm_ssh_public_key:
         description: Optional SSH public key override for the deployed VM
         type: string
@@ -67,6 +75,8 @@ jobs:
       rootfs_item_hash: ${{ github.event_name == 'workflow_dispatch' && inputs.rootfs_item_hash || '' }}
       rootfs_version: ${{ github.event_name == 'workflow_dispatch' && inputs.rootfs_version || '' }}
       vm_api_hosts: ${{ github.event_name == 'workflow_dispatch' && inputs.aleph_api_hosts || 'https://api3.aleph.im,https://api2.aleph.im,https://api.aleph.im' }}
+      ipfs_add_urls: ${{ github.event_name == 'workflow_dispatch' && inputs.ipfs_add_urls || 'https://ipfs-2.aleph.im/api/v0/add,https://ipfs.aleph.cloud/api/v0/add' }}
+      ipfs_gateway_urls: ${{ github.event_name == 'workflow_dispatch' && inputs.ipfs_gateway_urls || 'https://ipfs-2.aleph.im/ipfs,https://ipfs.aleph.cloud/ipfs' }}
       vm_name: orbitdb-relay
       vm_ssh_public_key: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_ssh_public_key || '' }}
       vm_crn_hash: ${{ github.event_name == 'workflow_dispatch' && inputs.vm_crn_hash || '' }}
