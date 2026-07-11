@@ -16,17 +16,6 @@ import type { PinningHttpHandlers } from "./metrics.js";
 import { DatabaseService } from "./database.js";
 import { syncLog } from "../utils/logger.js";
 
-const DEFAULT_ORBITDB_IDENTITY_EXCHANGE_TOPICS = [
-  "simple-todo.orbitdb-identities",
-];
-const DEFAULT_TODO_ENTRY_EXCHANGE_TOPICS = [
-  "simple-todo.orbitdb-todo-entries",
-];
-const DEFAULT_TODO_ENTRY_EXCHANGE_PROTOCOLS = [
-  "/simple-todo/orbitdb-entries/1.0.0",
-];
-const BRIDGED_MESSAGE_REPUBLISH_MS = 5_000;
-
 export type OrbitdbReplicationServiceInit = {
   datastore: Datastore;
   blockstore: Blockstore;
@@ -216,23 +205,9 @@ function setupOrbitdbReplicationHandlers(
 ) {
   const syncQueue = new PQueue({ concurrency: 2 });
   const subscribedOrbitdbTopics = new Set<string>();
-  const subscribedIdentityTopics = new Set<string>();
-  const subscribedTodoEntryTopics = new Set<string>();
   const queuedOrbitdbSyncTopics = new Set<string>();
-  const storedIdentityMessages = new Map<
-    string,
-    { topic: string; data: Uint8Array }
-  >();
-  const storedTodoEntryMessages = new Map<
-    string,
-    { topic: string; data: Uint8Array }
-  >();
   const pubsub = libp2p.services.pubsub as any;
   let isShuttingDown = false;
-
-  const identityExchangeTopics = getOrbitdbIdentityExchangeTopics();
-  const todoEntryExchangeTopics = getTodoEntryExchangeTopics();
-  const todoEntryExchangeProtocols = getTodoEntryExchangeProtocols();
 
   const ensureOrbitdbTopicSubscribed = async (topic: string) => {
     if (!topic?.startsWith("/orbitdb/")) return;
@@ -257,134 +232,6 @@ function setupOrbitdbReplicationHandlers(
         topic,
         error?.message || String(error),
       );
-    }
-  };
-
-  const ensureIdentityTopicSubscribed = async (topic: string) => {
-    if (!topic || subscribedIdentityTopics.has(topic)) return;
-
-    try {
-      await pubsub.subscribe(topic);
-      subscribedIdentityTopics.add(topic);
-      syncLog("Subscribed relay pubsub to OrbitDB identity topic:", topic);
-    } catch (error: any) {
-      syncLog(
-        "Failed to subscribe relay pubsub to OrbitDB identity topic:",
-        topic,
-        error?.message || String(error),
-      );
-    }
-  };
-
-  const ensureTodoEntryTopicSubscribed = async (topic: string) => {
-    if (!topic || subscribedTodoEntryTopics.has(topic)) return;
-
-    try {
-      await pubsub.subscribe(topic);
-      subscribedTodoEntryTopics.add(topic);
-      syncLog("Subscribed relay pubsub to OrbitDB todo-entry topic:", topic);
-    } catch (error: any) {
-      syncLog(
-        "Failed to subscribe relay pubsub to OrbitDB todo-entry topic:",
-        topic,
-        error?.message || String(error),
-      );
-    }
-  };
-
-  const importOrbitdbIdentityMessage = async (msg: any) => {
-    try {
-      const payload = JSON.parse(new TextDecoder().decode(msg.data));
-      const imported =
-        await databaseService.importOrbitDBIdentityBlock(payload);
-      if (!imported) {
-        syncLog(
-          "Ignored invalid OrbitDB identity message on topic:",
-          msg.topic,
-        );
-        return;
-      }
-      if (typeof payload?.hash === "string") {
-        storedIdentityMessages.set(payload.hash, {
-          topic: msg.topic,
-          data: msg.data,
-        });
-      }
-    } catch (error: any) {
-      syncLog(
-        "Failed to import OrbitDB identity from pubsub:",
-        msg.topic,
-        error?.message || String(error),
-      );
-    }
-  };
-
-  const importTodoEntryMessage = async (msg: any) => {
-    try {
-      const payload = JSON.parse(new TextDecoder().decode(msg.data));
-      const imported = await databaseService.importTodoDatabaseEntries(payload);
-      if (!imported) {
-        syncLog("Ignored invalid OrbitDB todo-entry message on topic:", msg.topic);
-        return;
-      }
-      if (typeof payload?.dbAddress === "string") {
-        storedTodoEntryMessages.set(payload.dbAddress, {
-          topic: msg.topic,
-          data: msg.data,
-        });
-        scheduleOrbitdbTopicSync(payload.dbAddress);
-      }
-    } catch (error: any) {
-      syncLog(
-        "Failed to import OrbitDB todo entries from pubsub:",
-        msg.topic,
-        error?.message || String(error),
-      );
-    }
-  };
-
-  const importTodoEntryStream = async (event: any) => {
-    try {
-      const stream = event?.stream ?? event;
-      const bytes = await readStreamBytes(stream.source ?? stream);
-      const payload = JSON.parse(new TextDecoder().decode(bytes));
-      const imported = await databaseService.importTodoDatabaseEntries(payload);
-      if (!imported) {
-        syncLog("Ignored invalid streamed OrbitDB todo-entry payload");
-        return;
-      }
-      if (typeof payload?.dbAddress === "string") {
-        storedTodoEntryMessages.set(payload.dbAddress, {
-          topic: todoEntryExchangeTopics[0],
-          data: bytes,
-        });
-        scheduleOrbitdbTopicSync(payload.dbAddress);
-      }
-    } catch (error: any) {
-      syncLog(
-        "Failed to import streamed OrbitDB todo entries:",
-        error?.message || String(error),
-      );
-    }
-  };
-
-  const republishStoredBridgeMessages = async () => {
-    if (isShuttingDown) return;
-
-    const messages = [
-      ...storedIdentityMessages.values(),
-      ...storedTodoEntryMessages.values(),
-    ];
-    for (const message of messages) {
-      try {
-        await pubsub.publish(message.topic, message.data);
-      } catch (error: any) {
-        syncLog(
-          "Failed to republish bridged OrbitDB message:",
-          message.topic,
-          error?.message || String(error),
-        );
-      }
     }
   };
 
@@ -414,14 +261,6 @@ function setupOrbitdbReplicationHandlers(
   const pubsubMessageHandler = (event: any) => {
     if (isShuttingDown) return;
     const msg = event.detail;
-    if (identityExchangeTopics.includes(msg.topic)) {
-      syncQueue.add(() => importOrbitdbIdentityMessage(msg));
-      return;
-    }
-    if (todoEntryExchangeTopics.includes(msg.topic)) {
-      syncQueue.add(() => importTodoEntryMessage(msg));
-      return;
-    }
     if (typeof msg.topic === "string" && msg.topic.startsWith("/orbitdb/")) {
       const dbName = databaseService.getCachedDbName(msg.topic);
       syncLog(
@@ -449,40 +288,8 @@ function setupOrbitdbReplicationHandlers(
     }
   };
 
-  const connectionOpenHandler = () => {
-    syncQueue.add(() => republishStoredBridgeMessages()).catch(() => {
-      // ignore queue shutdown races
-    });
-  };
-
   pubsub.addEventListener("message", pubsubMessageHandler);
   pubsub.addEventListener("subscription-change", subscriptionChangeHandler);
-  libp2p.addEventListener("connection:open", connectionOpenHandler);
-  const republishInterval = setInterval(() => {
-    syncQueue.add(() => republishStoredBridgeMessages()).catch(() => {
-      // ignore queue shutdown races
-    });
-  }, BRIDGED_MESSAGE_REPUBLISH_MS);
-  for (const topic of identityExchangeTopics) {
-    syncQueue.add(() => ensureIdentityTopicSubscribed(topic));
-  }
-  for (const topic of todoEntryExchangeTopics) {
-    syncQueue.add(() => ensureTodoEntryTopicSubscribed(topic));
-  }
-  for (const protocol of todoEntryExchangeProtocols) {
-    libp2p
-      .handle(protocol, importTodoEntryStream)
-      .then(() => {
-        syncLog("Registered relay OrbitDB todo-entry stream protocol:", protocol);
-      })
-      .catch((error: any) => {
-        syncLog(
-          "Failed to register relay OrbitDB todo-entry stream protocol:",
-          protocol,
-          error?.message || String(error),
-        );
-      });
-  }
 
   return async () => {
     isShuttingDown = true;
@@ -491,94 +298,10 @@ function setupOrbitdbReplicationHandlers(
       "subscription-change",
       subscriptionChangeHandler,
     );
-    libp2p.removeEventListener("connection:open", connectionOpenHandler);
-    clearInterval(republishInterval);
-
     syncQueue.pause();
     syncQueue.clear();
     await syncQueue.onIdle();
-    for (const topic of subscribedIdentityTopics) {
-      try {
-        await pubsub.unsubscribe(topic);
-      } catch {
-        // ignore shutdown unsubscribe failures
-      }
-    }
-    for (const topic of subscribedTodoEntryTopics) {
-      try {
-        await pubsub.unsubscribe(topic);
-      } catch {
-        // ignore shutdown unsubscribe failures
-      }
-    }
-    for (const protocol of todoEntryExchangeProtocols) {
-      try {
-        await libp2p.unhandle(protocol);
-      } catch {
-        // ignore shutdown unhandle failures
-      }
-    }
   };
-}
-
-function getOrbitdbIdentityExchangeTopics(): string[] {
-  const raw = process.env.ORBITDB_IDENTITY_EXCHANGE_TOPICS?.trim();
-  if (!raw) return DEFAULT_ORBITDB_IDENTITY_EXCHANGE_TOPICS;
-
-  const topics = raw
-    .split(",")
-    .map((topic) => topic.trim())
-    .filter(Boolean);
-
-  return topics.length > 0 ? topics : DEFAULT_ORBITDB_IDENTITY_EXCHANGE_TOPICS;
-}
-
-function getTodoEntryExchangeTopics(): string[] {
-  const raw = process.env.ORBITDB_TODO_ENTRY_EXCHANGE_TOPICS?.trim();
-  if (!raw) return DEFAULT_TODO_ENTRY_EXCHANGE_TOPICS;
-
-  const topics = raw
-    .split(",")
-    .map((topic) => topic.trim())
-    .filter(Boolean);
-
-  return topics.length > 0 ? topics : DEFAULT_TODO_ENTRY_EXCHANGE_TOPICS;
-}
-
-function getTodoEntryExchangeProtocols(): string[] {
-  const raw = process.env.ORBITDB_TODO_ENTRY_EXCHANGE_PROTOCOLS?.trim();
-  if (!raw) return DEFAULT_TODO_ENTRY_EXCHANGE_PROTOCOLS;
-
-  const protocols = raw
-    .split(",")
-    .map((protocol) => protocol.trim())
-    .filter(Boolean);
-
-  return protocols.length > 0
-    ? protocols
-    : DEFAULT_TODO_ENTRY_EXCHANGE_PROTOCOLS;
-}
-
-async function readStreamBytes(
-  source: AsyncIterable<Uint8Array | { subarray: () => Uint8Array }>,
-): Promise<Uint8Array> {
-  const chunks: Uint8Array[] = [];
-  let length = 0;
-
-  for await (const chunk of source) {
-    const bytes = chunk instanceof Uint8Array ? chunk : chunk.subarray();
-    chunks.push(bytes);
-    length += bytes.length;
-  }
-
-  const result = new Uint8Array(length);
-  let offset = 0;
-  for (const chunk of chunks) {
-    result.set(chunk, offset);
-    offset += chunk.length;
-  }
-
-  return result;
 }
 
 function installOnDemandOrbitdbHeadsSupport(
