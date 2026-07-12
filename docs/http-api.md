@@ -211,6 +211,8 @@ curl -sS -G "$BASE/pinning/databases" \
 
 Trigger **targeted sync** for one OrbitDB address (same work as pubsub-driven sync: open DB, wait for updates / fallback scan, enqueue media pins).
 
+Unlike the normal pubsub-triggered path, this explicit recovery path starts a fresh sync and may reconnect peers previously observed subscribing to the database topic. Reconnection gives OrbitDB's native heads topology another opportunity to discover a newer writer head; the HTTP API does not transfer application entries itself.
+
 **Address (choose one)**
 
 1. **JSON body** (preferred): `Content-Type: application/json`
@@ -280,12 +282,12 @@ Embedded consumers can switch the handler to **`pinned-only`** mode when they wa
 
 **Errors:** JSON body `application/json` where noted.
 
-| Status | Meaning |
-|--------|---------|
-| `400` | Missing CID, invalid encoding, invalid CID, or directory without a file path (directories cannot be listed as a whole). |
-| `404` | CID not pinned locally, or file/path not available offline. |
-| `500` | Pin check failed. |
-| `503` | IPFS/blockstore not available. |
+| Status | Meaning                                                                                                                 |
+| ------ | ----------------------------------------------------------------------------------------------------------------------- |
+| `400`  | Missing CID, invalid encoding, invalid CID, or directory without a file path (directories cannot be listed as a whole). |
+| `404`  | CID not pinned locally, or file/path not available offline.                                                             |
+| `500`  | Pin check failed.                                                                                                       |
+| `503`  | IPFS/blockstore not available.                                                                                          |
 
 **Security note:** This endpoint is **unauthenticated** in the default relay. Expose **`METRICS_PORT`** only on trusted networks, or put an authenticating proxy in front.
 

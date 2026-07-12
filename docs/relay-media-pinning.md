@@ -18,7 +18,8 @@ Event entrypoint is `src/events/handlers.ts`.
 - Pubsub `message`:
   - If topic starts with `/orbitdb/`, queue a sync task.
 - Pubsub `subscription-change`:
-  - For each topic starting with `/orbitdb/`, queue a sync task.
+  - Remember the subscribing peer as an in-memory hint for that OrbitDB topic.
+  - For each topic starting with `/orbitdb/`, queue a normal sync task.
 
 Sync tasks call:
 
@@ -29,16 +30,18 @@ Sync tasks call:
 For each sync task:
 
 1. Open the OrbitDB database from `dbAddress`.
-2. Wait (up to 5s) for OrbitDB `update` event(s).
-3. If updates were observed, extract media CIDs from those update entries only.
-4. Enqueue media pinning asynchronously (non-blocking for sync completion).
-5. Close the opened DB handle.
+2. Wait for OrbitDB `update` event(s).
+3. If updates were observed, extract media CIDs from those update entries.
+4. If no update event is observed, scan `db.all()` because replication may have completed before the listener was attached.
+5. Enqueue discovered media CIDs asynchronously and record an exact local-state snapshot.
+6. Keep databases with replicated state open so the relay continues serving native OrbitDB heads.
 
 Notes:
 
-- Sync does not call `db.all()` in the update-driven path.
-- If no update arrives within timeout, no new pin enqueue occurs for that sync run.
+- Sync does not call `db.all()` when an update event supplied the records.
+- If no update arrives within the observation window, `db.all()` provides the fallback scan and sync proof.
 - A short update-burst window is used to collect multiple closely spaced updates in the same sync execution.
+- An explicit `POST /pinning/sync` may reconnect peers previously observed subscribing to the database topic. The reconnect happens only after the database is open and its native OrbitDB heads topology is registered.
 
 ## CID Extraction Rules (Update Payload)
 

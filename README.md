@@ -14,6 +14,7 @@ See `AGENTS.md` for an architecture and feature guide (entrypoints, data flow, e
 - Relay media pinning flow: `docs/relay-media-pinning.md`
 - HTTP API (`/health`, `/multiaddrs`, `/pinning/*`, `/ipfs/*`, `/metrics`): `docs/http-api.md`
 - Libp2p service integration guide: `docs/libp2p-service.md`
+- OrbitDB peer discovery and explicit recovery: `docs/orbitdb-peer-recovery.md`
 
 ## CLI
 
@@ -90,18 +91,18 @@ It also exports reusable building blocks for embedded consumers:
 `orbitdbReplicationService()` mounts the OrbitDB replication + Helia pinning logic directly in any libp2p node:
 
 ```ts
-import { createLibp2p } from 'libp2p'
-import { LevelDatastore } from 'datastore-level'
-import { LevelBlockstore } from 'blockstore-level'
-import { gossipsub } from '@chainsafe/libp2p-gossipsub'
-import { identify } from '@libp2p/identify'
-import { orbitdbReplicationService } from 'orbitdb-relay'
+import { createLibp2p } from "libp2p";
+import { LevelDatastore } from "datastore-level";
+import { LevelBlockstore } from "blockstore-level";
+import { gossipsub } from "@chainsafe/libp2p-gossipsub";
+import { identify } from "@libp2p/identify";
+import { orbitdbReplicationService } from "orbitdb-relay";
 
-const datastore = new LevelDatastore('./tmp/ipfs/data')
-const blockstore = new LevelBlockstore('./tmp/ipfs/blocks')
+const datastore = new LevelDatastore("./tmp/ipfs/data");
+const blockstore = new LevelBlockstore("./tmp/ipfs/blocks");
 
-await datastore.open()
-await blockstore.open()
+await datastore.open();
+await blockstore.open();
 
 const libp2p = await createLibp2p({
   datastore,
@@ -111,12 +112,12 @@ const libp2p = await createLibp2p({
     orbitdbReplication: orbitdbReplicationService({
       datastore,
       blockstore,
-      orbitdbDirectory: './tmp/orbitdb'
-    })
-  }
-})
+      orbitdbDirectory: "./tmp/orbitdb",
+    }),
+  },
+});
 
-await libp2p.services.orbitdbReplication.syncAllOrbitDBRecords('/orbitdb/...')
+await libp2p.services.orbitdbReplication.syncAllOrbitDBRecords("/orbitdb/...");
 ```
 
 Notes:
@@ -124,6 +125,7 @@ Notes:
 - `orbitdbReplicationService()` expects caller-owned `datastore` and `blockstore`.
 - Stopping the libp2p node stops the replication service, OrbitDB, and its Helia instance.
 - The caller still closes `datastore` and `blockstore` after `libp2p.stop()`.
+- Since `0.9.7`, subscription changes retain an in-memory database-topic-to-peer hint. `POST /pinning/sync` may reconnect those known subscribers after opening the database so OrbitDB's native heads protocol can recover a newer writer head. No application records travel through this directory.
 
 ## Supported Access Controllers
 

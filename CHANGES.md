@@ -1,5 +1,17 @@
 # Changes
 
+## v0.9.7
+
+- Retained an in-memory OrbitDB database-topic-to-peer directory from native libp2p `subscription-change` events.
+- Added a targeted reconnect of known database subscribers for explicit fresh `/pinning/sync` recovery after the OrbitDB heads topology is registered.
+- Kept normal pubsub-triggered replication non-disruptive; reconnect behavior is limited to explicit recovery.
+- Added regression coverage for peer-hint deduplication and recovery reconnect behavior.
+- Verified the full 28-test suite and a cross-provider GitHub Actions + TestingBot run where the relay recovered Bob's exact record and advanced its snapshot from one to two entries.
+
+### Release note
+
+This patch fixes a cross-network store-and-forward gap in explicit OrbitDB synchronization. The relay still uses OrbitDB's native heads and block exchange; the new directory stores discovery hints only and introduces no application-specific data protocol. Fully passive writer-to-relay convergence remains follow-up work.
+
 ## v0.9.0
 
 - Added `connectivityDebugProtocolsService()` as an opt-in embeddable libp2p service for the versioned `/connectivity-echo/1.0.0` and `/connectivity-bulk/1.0.0` debug protocols.
