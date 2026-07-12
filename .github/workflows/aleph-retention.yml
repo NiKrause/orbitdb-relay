@@ -1,0 +1,58 @@
+name: Aleph Relay Retention
+
+on:
+  workflow_dispatch:
+    inputs:
+      keep_count:
+        description: Number of latest successful relay deployments to retain
+        required: true
+        default: '1'
+      current_instance_item_hash:
+        description: Instance item hash that must be retained
+        required: true
+      current_rootfs_item_hash:
+        description: Rootfs STORE item hash that must be retained
+        required: true
+      current_rootfs_version:
+        description: Rootfs version label
+        required: true
+      current_rootfs_cid:
+        description: Rootfs CID
+        required: false
+        default: ''
+      current_relay_peer_id:
+        description: Relay peer ID
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  retain:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout relay-button tooling
+        uses: actions/checkout@v6
+        with:
+          repository: NiKrause/relay-button
+          ref: v0.6.22
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24.x
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Retain latest successful relay deployments
+        env:
+          ALEPH_VM_MODE: retain-successful-deployments
+          ALEPH_VM_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
+          ALEPH_VM_API_HOST: https://api3.aleph.im
+          ALEPH_VM_API_HOSTS: https://api2.aleph.im,https://api.aleph.im
+          ALEPH_VM_CHANNEL: ALEPH-CLOUDSOLUTIONS
+          ALEPH_VM_RETENTION_KEEP_COUNT: ${{ inputs.keep_count }}
+          ALEPH_VM_RETENTION_EXTRA_FORGET_HASHES_JSON: '[]'
+          ALEPH_VM_RETENTION_CURRENT_RECORD_JSON: >-
+            {"instance_item_hash":"${{ inputs.current_instance_item_hash }}","rootfs_item_hash":"${{ inputs.current_rootfs_item_hash }}","rootfs_cid":"${{ inputs.current_rootfs_cid }}","site_item_hash":"","site_url":"","relay_peer_id":"${{ inputs.current_relay_peer_id }}","rootfs_version":"${{ inputs.current_rootfs_version }}","vm_name":"orbitdb-relay","deployed_at":"${{ github.run_id }}-${{ github.run_attempt }}"}
+        run: node ./packages/node/src/action-runner.ts
