@@ -23,6 +23,10 @@ on:
       current_relay_peer_id:
         description: Relay peer ID
         required: true
+      extra_forget_hashes_json:
+        description: Additional old instance/rootfs hashes to forget as a JSON array
+        required: false
+        default: '[]'
 
 permissions:
   contents: read
@@ -52,7 +56,7 @@ jobs:
           ALEPH_VM_API_HOSTS: https://api2.aleph.im,https://api.aleph.im
           ALEPH_VM_CHANNEL: ALEPH-CLOUDSOLUTIONS
           ALEPH_VM_RETENTION_KEEP_COUNT: ${{ inputs.keep_count }}
-          ALEPH_VM_RETENTION_EXTRA_FORGET_HASHES_JSON: '[]'
+          ALEPH_VM_RETENTION_EXTRA_FORGET_HASHES_JSON: ${{ inputs.extra_forget_hashes_json }}
           ALEPH_VM_RETENTION_CURRENT_RECORD_JSON: >-
             {"instance_item_hash":"${{ inputs.current_instance_item_hash }}","rootfs_item_hash":"${{ inputs.current_rootfs_item_hash }}","rootfs_cid":"${{ inputs.current_rootfs_cid }}","site_item_hash":"","site_url":"","relay_peer_id":"${{ inputs.current_relay_peer_id }}","rootfs_version":"${{ inputs.current_rootfs_version }}","vm_name":"orbitdb-relay","deployed_at":"${{ github.run_id }}-${{ github.run_attempt }}"}
         run: node ./packages/node/src/action-runner.ts
