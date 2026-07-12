@@ -260,7 +260,22 @@ export class DatabaseService {
       },
       syncDatabase: async (dbAddress: string) => {
         try {
-          const r = await this.syncAllOrbitDBRecordsWithResult(dbAddress);
+          let r = await this.syncAllOrbitDBRecordsWithResult(dbAddress, {
+            requireFresh: true,
+          });
+          const hasLocalProof =
+            (r.entryCount ?? 0) > 0 ||
+            r.lastRecord != null ||
+            r.extractedMediaCids.length > 0;
+          if (r.success && !hasLocalProof) {
+            syncLog(
+              "Explicit sync produced no local records; starting one fresh pass after topic/heads registration:",
+              dbAddress,
+            );
+            r = await this.syncAllOrbitDBRecordsWithResult(dbAddress, {
+              requireFresh: true,
+            });
+          }
           if (!r.success) {
             return { ok: false, error: "Sync failed" };
           }
@@ -364,7 +379,10 @@ export class DatabaseService {
    * Same as {@link syncAllOrbitDBRecords} but returns structured result for HTTP `/pinning/sync`
    * and observability.
    */
-  private async syncAllOrbitDBRecordsWithResult(dbAddress: string): Promise<{
+  private async syncAllOrbitDBRecordsWithResult(
+    dbAddress: string,
+    options: { requireFresh?: boolean } = {},
+  ): Promise<{
     success: boolean;
     receivedUpdate: boolean;
     fallbackScanUsed: boolean;
@@ -393,10 +411,26 @@ export class DatabaseService {
           : "Sync still in progress past stale threshold, coalescing to avoid duplicate database open:",
         dbAddress,
       );
-      await this.waitForCoalescedInFlight(
-        existing.promise,
-        COALESCED_SYNC_WAIT_MS,
-      );
+      if (options.requireFresh) {
+        syncLog(
+          "Explicit sync waiting for the in-progress sync before starting a fresh pass:",
+          dbAddress,
+        );
+        await this.withTimeout(
+          existing.promise,
+          SYNC_IN_FLIGHT_STALE_MS,
+          `In-progress sync for ${dbAddress}`,
+        );
+        // The owner removes its record in a finally block after resolving the
+        // shared promise. Yield once so that cleanup runs before the fresh pass.
+        await delay(0);
+        if (this.syncInFlight.get(dbAddress) === existing) {
+          this.syncInFlight.delete(dbAddress);
+        }
+        return await this.syncAllOrbitDBRecordsWithResult(dbAddress);
+      }
+
+      await this.waitForCoalescedInFlight(existing.promise, COALESCED_SYNC_WAIT_MS);
     }
 
     const afterCoalesced = this.syncInFlight.get(dbAddress);
