@@ -14,7 +14,7 @@ See `AGENTS.md` for an architecture and feature guide (entrypoints, data flow, e
 - Relay media pinning flow: `docs/relay-media-pinning.md`
 - HTTP API (`/health`, `/multiaddrs`, `/pinning/*`, `/ipfs/*`, `/metrics`): `docs/http-api.md`
 - Libp2p service integration guide: `docs/libp2p-service.md`
-- OrbitDB peer discovery and explicit recovery: `docs/orbitdb-peer-recovery.md`
+- [OrbitDB peer directory, native heads reconnect, and explicit recovery](docs/orbitdb-peer-recovery.md) — why the relay needs this orchestration around OrbitDB's native replication
 
 ## CLI
 
