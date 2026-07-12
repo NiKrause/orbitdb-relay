@@ -87,7 +87,10 @@ function toUint8Array(value: unknown): Uint8Array {
   ) {
     return toUint8Array((value as { subarray: () => unknown }).subarray());
   }
-  if (value != null && typeof (value as { slice?: unknown }).slice === "function") {
+  if (
+    value != null &&
+    typeof (value as { slice?: unknown }).slice === "function"
+  ) {
     return toUint8Array((value as { slice: () => unknown }).slice());
   }
   return new Uint8Array();
@@ -96,8 +99,9 @@ function toUint8Array(value: unknown): Uint8Array {
 async function collectUint8Array(value: unknown): Promise<Uint8Array> {
   if (
     value != null &&
-    typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] ===
-      "function"
+    typeof (value as { [Symbol.asyncIterator]?: unknown })[
+      Symbol.asyncIterator
+    ] === "function"
   ) {
     const chunks: Uint8Array[] = [];
     for await (const chunk of value as AsyncIterable<unknown>) {
@@ -157,6 +161,8 @@ export class DatabaseService {
   knownDatabasesByAddress: Set<string>;
   /** Manifest `name` by OrbitDB address (for logs / pubsub). */
   orbitDbNameByAddress: Map<string, string>;
+  /** Peers observed subscribing to a native OrbitDB database topic. */
+  knownDatabasePeers: Map<string, Map<string, unknown>>;
 
   constructor() {
     this.metrics = new MetricsServer();
@@ -177,6 +183,48 @@ export class DatabaseService {
     this.pinnedDatabasesByAddress = new Map();
     this.knownDatabasesByAddress = new Set();
     this.orbitDbNameByAddress = new Map();
+    this.knownDatabasePeers = new Map();
+  }
+
+  rememberDatabasePeer(dbAddress: string, peer: unknown): void {
+    if (!dbAddress?.startsWith(ORBITDB_PREFIX) || peer == null) return;
+    const peerId = (peer as any)?.toString?.() || String(peer);
+    if (!peerId || peerId === "[object Object]") return;
+    let peers = this.knownDatabasePeers.get(dbAddress);
+    if (!peers) {
+      peers = new Map();
+      this.knownDatabasePeers.set(dbAddress, peers);
+    }
+    peers.set(peerId, peer);
+  }
+
+  private async reconnectKnownDatabasePeers(dbAddress: string): Promise<void> {
+    const peers = this.knownDatabasePeers.get(dbAddress);
+    const libp2p = (this.ipfs as any)?.libp2p;
+    if (!peers?.size || !libp2p) return;
+
+    await Promise.allSettled(
+      Array.from(peers.entries(), async ([peerId, peer]) => {
+        if (peerId === libp2p.peerId?.toString?.()) return;
+        try {
+          // OrbitDB registers its native heads topology while opening the DB.
+          // Reconnecting an already-known subscriber after that registration
+          // lets libp2p notify the topology without a custom data protocol.
+          await libp2p.hangUp(peer).catch(() => {});
+          await libp2p.dial(peer);
+          syncLog("Reconnected known OrbitDB subscriber after database open:", {
+            dbAddress,
+            peerId,
+          });
+        } catch (error: any) {
+          syncLog("Failed to reconnect known OrbitDB subscriber:", {
+            dbAddress,
+            peerId,
+            error: error?.message || String(error),
+          });
+        }
+      }),
+    );
   }
 
   /** Resolved DB name from last successful manifest load for this address (if any). */
@@ -432,7 +480,10 @@ export class DatabaseService {
         return await this.syncAllOrbitDBRecordsWithResult(dbAddress);
       }
 
-      await this.waitForCoalescedInFlight(existing.promise, COALESCED_SYNC_WAIT_MS);
+      await this.waitForCoalescedInFlight(
+        existing.promise,
+        COALESCED_SYNC_WAIT_MS,
+      );
     }
 
     const afterCoalesced = this.syncInFlight.get(dbAddress);
@@ -502,6 +553,9 @@ export class DatabaseService {
           ),
         );
         db = await this.retainOpenDatabase(dbAddress);
+        if (options.requireFresh) {
+          await this.reconnectKnownDatabasePeers(dbAddress);
+        }
         if (typeof db?.name === "string" && db.name) {
           dbName = db.name;
         }
@@ -1363,11 +1417,13 @@ export class DatabaseService {
     try {
       const orbitAddress = parseAddress(dbAddress);
       const cid = CID.parse(orbitAddress.hash, base58btc);
-      const bytes = await collectUint8Array(await this.withTimeout(
-        this.ipfs.blockstore.get(cid),
-        MANIFEST_LOAD_TIMEOUT_MS,
-        `OrbitDB manifest load for ${dbAddress}`,
-      ));
+      const bytes = await collectUint8Array(
+        await this.withTimeout(
+          this.ipfs.blockstore.get(cid),
+          MANIFEST_LOAD_TIMEOUT_MS,
+          `OrbitDB manifest load for ${dbAddress}`,
+        ),
+      );
       const { value } = await Block.decode({
         bytes,
         codec: dagCbor,

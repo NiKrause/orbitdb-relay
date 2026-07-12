@@ -282,6 +282,15 @@ function setupOrbitdbReplicationHandlers(
     if (event.detail?.subscriptions) {
       for (const subscription of event.detail.subscriptions) {
         if (subscription.topic?.startsWith("/orbitdb/")) {
+          if (
+            subscription.subscribe !== false &&
+            event.detail?.peerId != null
+          ) {
+            databaseService.rememberDatabasePeer(
+              subscription.topic,
+              event.detail.peerId,
+            );
+          }
           scheduleOrbitdbTopicSync(subscription.topic);
         }
       }
