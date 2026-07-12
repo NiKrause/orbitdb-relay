@@ -45,10 +45,10 @@ importers:
         version: 1.0.0
       '@le-space/orbitdb-access-controller-delegated-todo':
         specifier: ^0.1.0
-        version: 0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.3.0(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3)))(@orbitdb/core@4.0.0)
+        version: 0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.3.1(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3)))(@orbitdb/core@4.0.0)
       '@le-space/orbitdb-identity-provider-webauthn-did':
-        specifier: ^0.3.0
-        version: 0.3.0(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3))
+        specifier: ^0.3.1
+        version: 0.3.1(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3))
       '@libp2p/autonat':
         specifier: ^3.0.22
         version: 3.0.22
@@ -747,8 +747,8 @@ packages:
       '@le-space/orbitdb-identity-provider-webauthn-did': ^0.2.10
       '@orbitdb/core': ^3.0.0
 
-  '@le-space/orbitdb-identity-provider-webauthn-did@0.3.0':
-    resolution: {integrity: sha512-xzLvj0qHgs59rvXoC7dXcExTkDEqQTrMYnTTnZs2J8gUnQEzcyquR0JQl0xhObHf5TMu7Nbsr+Q48LIKo8DfKw==}
+  '@le-space/orbitdb-identity-provider-webauthn-did@0.3.1':
+    resolution: {integrity: sha512-44AwU7rKcgLvS9tdkQb7Iz7nUPAhEE9g8LuAGCgZQXd3zBAClLRicKIz/JHs9V/8XVp7Tlypo8coQ0xZNnb0Cg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@orbitdb/core': ^4.0.0
@@ -4651,12 +4651,12 @@ snapshots:
     dependencies:
       iso-base: '@le-space/iso-base@4.3.0'
 
-  '@le-space/orbitdb-access-controller-delegated-todo@0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.3.0(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3)))(@orbitdb/core@4.0.0)':
+  '@le-space/orbitdb-access-controller-delegated-todo@0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.3.1(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3)))(@orbitdb/core@4.0.0)':
     dependencies:
-      '@le-space/orbitdb-identity-provider-webauthn-did': 0.3.0(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3))
+      '@le-space/orbitdb-identity-provider-webauthn-did': 0.3.1(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3))
       '@orbitdb/core': 4.0.0
 
-  '@le-space/orbitdb-identity-provider-webauthn-did@0.3.0(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3))':
+  '@le-space/orbitdb-identity-provider-webauthn-did@0.3.1(@orbitdb/core@4.0.0)(rollup@4.60.1)(vite@7.3.1(@types/node@22.19.17)(terser@5.46.1)(yaml@2.8.3))':
     dependencies:
       '@ipld/dag-cbor': 10.0.1
       '@ipld/dag-ucan': 3.4.5

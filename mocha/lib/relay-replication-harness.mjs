@@ -171,6 +171,7 @@ async function runRelayMediaReplicationScenarioCore(opts) {
     getStats,
     getDatabases,
     getRelayPeerId,
+    getRelayProtocols,
   } = opts
 
   const safeName = dbBaseName.replace(/[^a-zA-Z0-9-_]/g, '-')
@@ -204,8 +205,10 @@ async function runRelayMediaReplicationScenarioCore(opts) {
   const aliceDbAddress = aliceDb.address
   const expectedCidStr = imageBlocks[0].cid.toString()
 
+  let lastSyncResult = null
   const syncJson = await waitFor(async () => {
     const parsed = await syncDatabase(aliceDbAddress)
+    lastSyncResult = parsed
     if (!parsed?.ok) {
       return null
     }
@@ -213,7 +216,9 @@ async function runRelayMediaReplicationScenarioCore(opts) {
       return null
     }
     return parsed
-  }, 120000)
+  }, 120000).catch((error) => {
+    throw new Error(`${error.message}; last relay sync result: ${JSON.stringify(lastSyncResult)}`)
+  })
 
   assert.ok(
     syncJson.receivedUpdate === true || syncJson.fallbackScanUsed === true,
@@ -238,6 +243,21 @@ async function runRelayMediaReplicationScenarioCore(opts) {
 
   const relayPeerIdStr = await getRelayPeerId()
   assert.ok(typeof relayPeerIdStr === 'string' && relayPeerIdStr.length > 0, 'relay should expose peerId')
+
+  if (getRelayProtocols) {
+    const headsProtocol = `/orbitdb/heads${aliceDbAddress}`
+    await waitFor(async () => {
+      const protocols = await getRelayProtocols()
+      return protocols.includes(headsProtocol) ? protocols : null
+    }, 10000)
+    // Ensure it is not merely visible while the temporary sync reference is
+    // being released.
+    await delay(500)
+    assert.ok(
+      (await getRelayProtocols()).includes(headsProtocol),
+      `Relay must keep the native OrbitDB heads protocol registered: ${headsProtocol}`,
+    )
+  }
 
   await stopClient(alice)
   alice = null
@@ -324,5 +344,6 @@ export async function runOrbitdbReplicationServiceScenario(opts) {
     getStats: async () => pinning.getStats(),
     getDatabases: async () => pinning.getDatabases(),
     getRelayPeerId: async () => relayPeerId,
+    getRelayProtocols: async () => relayService.ipfs.libp2p.getProtocols(),
   })
 }

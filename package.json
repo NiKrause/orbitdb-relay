@@ -1,6 +1,6 @@
 {
   "name": "orbitdb-relay",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "private": false,
   "type": "module",
   "description": "OrbitDB relay with media pinning and sync for Helia/libp2p stacks.",
@@ -69,7 +69,7 @@
     "@ipld/dag-json": "^11.0.0",
     "@ipshipyard/libp2p-auto-tls": "^1.0.0",
     "@le-space/orbitdb-access-controller-delegated-todo": "^0.1.0",
-    "@le-space/orbitdb-identity-provider-webauthn-did": "^0.3.0",
+    "@le-space/orbitdb-identity-provider-webauthn-did": "^0.3.1",
     "@libp2p/autonat": "^3.0.22",
     "@libp2p/bootstrap": "^12.0.25",
     "@libp2p/circuit-relay-v2": "^4.2.7",
@@ -118,7 +118,7 @@
     },
     "peerDependencyRules": {
       "allowedVersions": {
-        "@le-space/orbitdb-access-controller-delegated-todo>@le-space/orbitdb-identity-provider-webauthn-did": "0.3.0",
+        "@le-space/orbitdb-access-controller-delegated-todo>@le-space/orbitdb-identity-provider-webauthn-did": "0.3.1",
         "@le-space/orbitdb-access-controller-delegated-todo>@orbitdb/core": "4.0.0"
       }
     },

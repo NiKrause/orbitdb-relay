@@ -143,6 +143,7 @@ export class DatabaseService {
   syncInFlight: Map<string, InFlightRecord<void>>;
   openInFlight: Map<string, InFlightRecord<any>>;
   databaseUseCounts: Map<string, number>;
+  pinnedOpenDatabases: Map<string, any>;
   pinQueue: PQueue;
   queuedImageCids: Set<string>;
   pinnedImageCids: Set<string>;
@@ -166,6 +167,7 @@ export class DatabaseService {
     this.syncInFlight = new Map();
     this.openInFlight = new Map();
     this.databaseUseCounts = new Map();
+    this.pinnedOpenDatabases = new Map();
     this.pinQueue = new PQueue({ concurrency: 4 });
     this.queuedImageCids = new Set();
     this.pinnedImageCids = new Set();
@@ -653,6 +655,21 @@ export class DatabaseService {
                 snapshotSource: snapshot.source,
               },
         );
+        const hasReplicatedState =
+          (snapshot.entryCount ?? 0) > 0 ||
+          snapshot.lastRecord != null ||
+          receivedUpdate ||
+          extractedMediaCids.length > 0;
+        if (hasReplicatedState) {
+          // A relay/pinner must keep a synchronized OrbitDB open. OrbitDB owns
+          // the native heads protocol registration and identify-push
+          // notifications. Do not promote an early empty discovery pass: it
+          // must be allowed to close and reopen once writer heads are present.
+          this.pinnedOpenDatabases.set(dbAddress, db);
+          if (aclDb && aclDbAddress) {
+            this.pinnedOpenDatabases.set(aclDbAddress, aclDb);
+          }
+        }
         success = true;
       } catch (err: any) {
         this.pinningFailedSyncs++;
@@ -663,10 +680,15 @@ export class DatabaseService {
           console.error("Failed to sync database:", err);
         }
       } finally {
-        if (db) {
+        if (db && this.pinnedOpenDatabases.get(dbAddress) !== db) {
           await this.releaseOpenDatabase(dbAddress, db);
         }
-        if (aclDb && aclDb !== db && aclDbAddress) {
+        if (
+          aclDb &&
+          aclDb !== db &&
+          aclDbAddress &&
+          this.pinnedOpenDatabases.get(aclDbAddress) !== aclDb
+        ) {
           await this.releaseOpenDatabase(aclDbAddress, aclDb);
         }
       }
@@ -1891,6 +1913,9 @@ export class DatabaseService {
     this.pinQueue.pause();
     this.pinQueue.clear();
     await this.pinQueue.onIdle();
+
+    this.pinnedOpenDatabases.clear();
+    this.databaseUseCounts.clear();
 
     try {
       await this.orbitdb?.stop?.();
