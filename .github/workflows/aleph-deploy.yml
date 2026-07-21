@@ -55,12 +55,12 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@v0.6.22
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@v0.6.22-autotls
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
       tooling_repository: NiKrause/relay-button
-      tooling_ref: v0.6.22
+      tooling_ref: v0.6.22-autotls
       rootfs_upload_driver: aleph-api-ipfs
       rootfs_require_processed_store: true
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
