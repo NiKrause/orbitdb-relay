@@ -175,5 +175,13 @@ export const createLibp2pConfig = (
     connectionGater: {
       denyDialMultiaddr: async () => false,
     },
+    connectionManager: {
+      // Bound established connections. When bootstrap is enabled the relay joins
+      // the public IPFS/DHT swarm (needed for AutoNAT to confirm a public address
+      // and for AutoTLS to provision), which can otherwise grow connections
+      // unboundedly on a single relay. Generous default so the relay keeps
+      // serving many browser clients; env-overridable.
+      maxConnections: Number(process.env.RELAY_MAX_CONNECTIONS || 1024),
+    },
   } as any
 }
