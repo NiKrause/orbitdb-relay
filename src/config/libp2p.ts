@@ -160,7 +160,27 @@ export const createLibp2pConfig = (
       }),
       identify: identify(),
       identifyPush: identifyPush(),
-      pubsub: gossipsub({ allowPublishToZeroTopicPeers: true }),
+      pubsub: gossipsub({
+        allowPublishToZeroTopicPeers: true,
+        // Neutralise gossipsub's punitive peer scoring for this relay. Every
+        // browser reaches the relay through the same Caddy WSS proxy, so from
+        // libp2p's view they all share one source IP (127.0.0.1). With the
+        // default scoring, once more than IPColocationFactorThreshold (10)
+        // browser connections are live on that IP, each peer is penalised
+        // -5·(peers−10)² (P6), and the connection churn of a busy session adds
+        // the behaviour penalty (P7). Their score goes negative and the relay
+        // stops grafting them into the mesh ("GRAFT: ignoring peer with
+        // negative score"), so it silently stops delivering — observed
+        // accumulating over a heavy test session until replication timed out.
+        // A pinning relay legitimately serves many short-lived, co-located
+        // browser peers, so disable the two penalty weights (both must be ≤ 0;
+        // 0 disables). With no topic score params configured, this keeps every
+        // peer's score at 0 and always graftable.
+        scoreParams: {
+          IPColocationFactorWeight: 0,
+          behaviourPenaltyWeight: 0,
+        },
+      }),
       ...(!process.env.disableAutoTLS && {
         autoTLS: autoTLS({
           autoConfirmAddress: true,
