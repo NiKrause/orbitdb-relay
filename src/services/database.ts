@@ -723,6 +723,9 @@ export class DatabaseService {
           if (aclDb && aclDbAddress) {
             this.pinnedOpenDatabases.set(aclDbAddress, aclDb);
           }
+          if (receivedUpdate) {
+            await this.republishHeadsToSubscribers(dbAddress, db, dbName);
+          }
         }
         success = true;
       } catch (err: any) {
@@ -1713,6 +1716,58 @@ export class DatabaseService {
     }
 
     this.databaseUseCounts.set(dbAddress, current - 1);
+  }
+
+  // NOTE: do NOT try to keep the relay pubsub-subscribed to a database topic
+  // across closes (tried 2026-07-22). OrbitDB's Sync bootstrap is edge-
+  // triggered: writers only dial the heads exchange when they observe a
+  // `subscription-change` for the topic. A relay that stays subscribed makes
+  // its next database open a no-op change — writers never dial, the relay
+  // never receives heads, and every sync pass reports `receivedUpdate: false`
+  // (reproduced by mocha/relay-media-replication.mjs going red). The durable
+  // upstream fix is for Sync to enumerate peers that are already subscribed
+  // when it starts, instead of relying on the change edge.
+
+  /**
+   * Push freshly synced heads onto the database's pubsub topic.
+   *
+   * OrbitDB only publishes an entry when the appending peer calls
+   * `sync.add()`; heads received via the heads-exchange protocol are never
+   * re-announced, and Sync's per-peer one-shot cache means a browser that
+   * exchanged heads with this relay BEFORE the relay obtained the writer's
+   * entry will never ask again. Observed live: writer A published into a
+   * topic nobody heard, the relay received the entry moments later via A's
+   * proof-triggered exchange, and reader B — subscribed and mesh-grafted the
+   * whole time — stayed empty until the test's 120s timeout. Re-publishing
+   * the current heads through OrbitDB's own `sync.add()` delivers them to
+   * every current topic subscriber; receivers de-duplicate via `joinEntry`.
+   * Gated on `receivedUpdate` by the caller so unchanged syncs publish
+   * nothing (no relay-to-relay echo loops).
+   */
+  private async republishHeadsToSubscribers(
+    dbAddress: string,
+    db: any,
+    dbName: string | null,
+  ): Promise<void> {
+    try {
+      const heads = (await db?.log?.heads?.()) ?? [];
+      for (const head of heads) {
+        await db?.sync?.add?.(head);
+      }
+      if (heads.length > 0) {
+        syncLog("Republished synced heads to topic subscribers:", {
+          dbAddress,
+          dbName,
+          heads: heads.length,
+        });
+      }
+    } catch (error: any) {
+      syncLog(
+        "Failed to republish synced heads:",
+        dbAddress,
+        error?.message || String(error),
+      );
+    }
   }
 
   private async closeDatabaseSilently(db: any): Promise<void> {
