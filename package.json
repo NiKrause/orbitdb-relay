@@ -1,6 +1,6 @@
 {
   "name": "orbitdb-relay",
-  "version": "0.9.8",
+  "version": "0.10.0",
   "private": false,
   "type": "module",
   "description": "OrbitDB relay with media pinning and sync for Helia/libp2p stacks.",

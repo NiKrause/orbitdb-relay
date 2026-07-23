@@ -62,7 +62,7 @@ curl -sS "$BASE/health"
 ```json
 {
   "status": "ok",
-  "version": "0.9.8",
+  "version": "0.10.0",
   "peerId": "12D3KooW…",
   "connections": { "active": 42 },
   "multiaddrs": 13,
