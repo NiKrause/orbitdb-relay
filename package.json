@@ -1,6 +1,6 @@
 {
   "name": "orbitdb-relay",
-  "version": "0.9.7",
+  "version": "0.9.8",
   "private": false,
   "type": "module",
   "description": "OrbitDB relay with media pinning and sync for Helia/libp2p stacks.",
@@ -44,7 +44,7 @@
   },
   "scripts": {
     "start": "DEBUG=le-space:relay:* node dist/cli.js",
-    "build": "tsc -p tsconfig.json && node scripts/add-shebang.mjs",
+    "build": "node scripts/write-version.mjs && tsc -p tsconfig.json && node scripts/add-shebang.mjs",
     "test": "pnpm run build && mocha --timeout 180000 \"mocha/**/*.mjs\"",
     "test:integration:relay-media": "pnpm run build && mocha --timeout 180000 \"mocha/relay-media-replication.mjs\"",
     "prepack": "pnpm run build"

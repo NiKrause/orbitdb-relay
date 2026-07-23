@@ -65,6 +65,32 @@ describe('PinningHttp request handler', function () {
     }
   })
 
+  it('reports the relay version on GET /health and /multiaddrs', async () => {
+    const { RELAY_VERSION } = await import('../dist/version.js')
+    const handler = exports.createPinningHttpRequestHandler({
+      getLibp2p: () => null,
+    })
+    const server = http.createServer(handler)
+    const addr = await listen(server)
+    const base = `http://127.0.0.1:${addr.port}`
+
+    try {
+      const healthRes = await fetch(`${base}/health`)
+      assert.equal(healthRes.status, 200)
+      const health = await healthRes.json()
+      assert.equal(health.status, 'ok')
+      assert.equal(health.version, RELAY_VERSION)
+      assert.ok(/^\d+\.\d+\.\d+/.test(health.version), 'version looks like semver')
+
+      const maRes = await fetch(`${base}/multiaddrs`)
+      assert.equal(maRes.status, 200)
+      const ma = await maRes.json()
+      assert.equal(ma.version, RELAY_VERSION)
+    } finally {
+      await close(server)
+    }
+  })
+
   it('falls back to Helia content when pinning returns not found', async () => {
     const helia = await createHelia({
       datastore: new MemoryDatastore(),

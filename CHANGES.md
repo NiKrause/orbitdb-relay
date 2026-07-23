@@ -1,5 +1,10 @@
 # Changes
 
+## v0.9.8
+
+- Added a `version` field to `GET /health` and `GET /multiaddrs`, embedded at build time from `package.json` via `scripts/write-version.mjs` → `src/version.ts`, so clients (e.g. simple-todo) can display which relay build they are connected to (#18).
+- Documented the new field in `docs/http-api.md` and added regression coverage in `mocha/pinning-http.mjs`.
+
 ## v0.9.7
 
 - Retained an in-memory OrbitDB database-topic-to-peer directory from native libp2p `subscription-change` events.

@@ -62,6 +62,7 @@ curl -sS "$BASE/health"
 ```json
 {
   "status": "ok",
+  "version": "0.9.8",
   "peerId": "12D3KooW…",
   "connections": { "active": 42 },
   "multiaddrs": 13,
@@ -76,7 +77,7 @@ curl -sS "$BASE/health"
 }
 ```
 
-`multiaddrs` is the **count** of advertised multiaddrs, not the list (use **`GET /multiaddrs`**). When **`METRICS_HTTPS_ENABLED`** is true and a certificate is active, **`metricsHttps.listening`** is true, **`internalPort`** is the bound port, **`externalPort`** uses `EXTERNAL_METRICS_HTTPS_PORT` when available, and **`exampleUrl`** uses the resolved AutoTLS hostname.
+`version` is the relay's package version (from `package.json`, embedded at build time), so clients can display which relay build they are connected to. `multiaddrs` is the **count** of advertised multiaddrs, not the list (use **`GET /multiaddrs`**, whose response also carries `version`). When **`METRICS_HTTPS_ENABLED`** is true and a certificate is active, **`metricsHttps.listening`** is true, **`internalPort`** is the bound port, **`externalPort`** uses `EXTERNAL_METRICS_HTTPS_PORT` when available, and **`exampleUrl`** uses the resolved AutoTLS hostname.
 
 ---
 

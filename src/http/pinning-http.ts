@@ -3,6 +3,7 @@ import https from 'https'
 import { unixfs } from '@helia/unixfs'
 import { CID } from 'multiformats/cid'
 
+import { RELAY_VERSION } from '../version.js'
 import type { PinningHttpHandlers } from '../services/metrics.js'
 
 export type Libp2pLike = {
@@ -273,6 +274,7 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
       const metricsHttpsInfo = options.getMetricsHttpsInfo?.() ?? null
       sendJson(res, 200, {
         status: 'ok',
+        version: RELAY_VERSION,
         peerId: libp2p?.peerId?.toString?.() || null,
         connections: { active: connections.length },
         multiaddrs: multiaddrs.length,
@@ -317,6 +319,7 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
        }
        const metricsHttpsInfo = options.getMetricsHttpsInfo?.() ?? null
        sendJson(res, 200, {
+         version: RELAY_VERSION,
          peerId: libp2p?.peerId?.toString?.() || null,
          all,
          byTransport,
