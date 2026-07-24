@@ -36,5 +36,9 @@ jobs:
           FORGET_REASON: ${{ inputs.reason }}
           CONFIRM_FORGET: 'yes'
         run: |
-          npm install --no-save --no-package-lock viem >/dev/null 2>&1
-          node scripts/aleph-forget.mjs
+          workdir="$(mktemp -d)"
+          cp scripts/aleph-forget.mjs "$workdir/"
+          cd "$workdir"
+          npm init -y >/dev/null
+          npm install viem
+          node aleph-forget.mjs
