@@ -87,6 +87,52 @@ function prioritizeAddresses(addrs: string[]): string[] {
   })
 }
 
+/**
+ * Browsers can only dial webrtc-direct/webtransport addresses that carry the
+ * listener's certificate hash — the /certhash/ component IS the connection's
+ * authentication. The synthesized external announce addresses (appendAnnounce
+ * from the guest configure script: public IP + mapped port) are certhash-less
+ * strings that libp2p passes through verbatim whenever the webrtc listener
+ * did not come up (observed on Aleph VMs: no webrtc listen addresses at all,
+ * not even loopback). Advertising them poisons bootstrap registrations with
+ * undialable addresses and trips the deploy pipeline's certhash verification.
+ *
+ * Enrich-or-drop: graft the certhash suffix from a real listener address of
+ * the same transport onto bare entries; when no certhash exists anywhere,
+ * drop the bare entries instead of advertising them.
+ */
+export function enrichBrowserTransportCerthash(addrs: string[]): string[] {
+  const suffixFor = (transport: string): string | null => {
+    for (const addr of addrs) {
+      const index = addr.indexOf(`/${transport}/certhash/`)
+      if (index === -1) continue
+      const tail = addr.slice(index + transport.length + 2)
+      const p2pIndex = tail.indexOf('/p2p/')
+      return p2pIndex === -1 ? tail : tail.slice(0, p2pIndex)
+    }
+    return null
+  }
+
+  const result: string[] = []
+  for (const addr of addrs) {
+    const transport = addr.includes('/webrtc-direct')
+      ? 'webrtc-direct'
+      : addr.includes('/webtransport')
+        ? 'webtransport'
+        : null
+    if (!transport || addr.includes('/certhash/')) {
+      result.push(addr)
+      continue
+    }
+    const suffix = suffixFor(transport)
+    if (!suffix) continue
+    const marker = `/${transport}`
+    const markerEnd = addr.indexOf(marker) + marker.length
+    result.push(`${addr.slice(0, markerEnd)}/${suffix}${addr.slice(markerEnd)}`)
+  }
+  return result
+}
+
 function applyCorsHeaders(req: http.IncomingMessage, res: http.ServerResponse, config: PinningHttpRequestHandlerOptions['cors']) {
   const originConfig = config?.origin ?? '*'
   const requestOrigin = req.headers.origin
@@ -302,14 +348,17 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
        )
        
        const allRaw = (libp2p?.getMultiaddrs?.() || []).map((ma) => ma.toString())
+       // Enrich BEFORE the public filter: private listener addresses carry the
+       // certhash that the synthesized public announce entries need grafted.
+       const enriched = enrichBrowserTransportCerthash(allRaw)
        let all: string[]
-       
+
        if (isDeployedMode) {
          // Filter out internal-only addresses in deployed mode
-         all = prioritizeAddresses(allRaw.filter(isPublicAddress))
+         all = prioritizeAddresses(enriched.filter(isPublicAddress))
        } else {
          // Keep all addresses in development mode
-         all = prioritizeAddresses(allRaw)
+         all = prioritizeAddresses(enriched)
        }
        
        const byTransport = {
