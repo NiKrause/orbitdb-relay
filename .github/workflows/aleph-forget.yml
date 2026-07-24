@@ -1,0 +1,39 @@
+name: Aleph targeted forget
+
+on:
+  workflow_dispatch:
+    inputs:
+      hashes:
+        description: Comma-separated full item hashes to FORGET (deploy wallet's own messages only)
+        required: true
+        type: string
+      channel:
+        description: Aleph channel of the original messages
+        required: false
+        default: ALEPH-CLOUDSOLUTIONS
+        type: string
+      reason:
+        description: Reason recorded in the FORGET message
+        required: false
+        default: Targeted maintenance forget
+        type: string
+
+jobs:
+  forget:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+      - name: Broadcast FORGET
+        env:
+          ALEPH_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
+          FORGET_HASHES: ${{ inputs.hashes }}
+          FORGET_CHANNEL: ${{ inputs.channel }}
+          FORGET_REASON: ${{ inputs.reason }}
+          CONFIRM_FORGET: 'yes'
+        run: |
+          npm install --no-save --no-package-lock viem >/dev/null 2>&1
+          node scripts/aleph-forget.mjs
