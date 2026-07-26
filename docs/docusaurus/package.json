@@ -1,0 +1,25 @@
+{
+  "name": "@le-space/orbitdb-relay-docs",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "start": "docusaurus start --host 0.0.0.0 --port 3000",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.9.2",
+    "@docusaurus/faster": "^3.10.1",
+    "@docusaurus/preset-classic": "^3.9.2",
+    "@docusaurus/theme-mermaid": "^3.9.2",
+    "@fontsource/inter": "^5.2.8",
+    "@fontsource/jetbrains-mono": "^5.2.8",
+    "@mermaid-js/layout-elk": "^0.1.4",
+    "@mdx-js/react": "^3.1.0",
+    "clsx": "^2.1.1",
+    "prism-react-renderer": "^2.4.1",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  }
+}

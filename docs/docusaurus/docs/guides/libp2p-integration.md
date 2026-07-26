@@ -1,20 +1,29 @@
-# Libp2p Service Integration
+---
+id: libp2p-integration
+title: libp2p integration
+description: Mount orbitdbReplicationService() and the pinning HTTP handler inside your own libp2p node.
+---
+
+# libp2p service integration
 
 This package can be used in two ways:
 
-- `startRelay()` for the full relay runtime
-- `orbitdbReplicationService()` for mounting the OrbitDB replication + Helia pinning logic inside an existing libp2p node
+- `startRelay()` for the full relay runtime — see [Using as a library](./library.md).
+- `orbitdbReplicationService()` for mounting the OrbitDB replication + Helia pinning logic inside an
+  existing libp2p node (covered here).
 
 It also exports:
 
-- `connectivityDebugProtocolsService()` for opt-in `/connectivity-echo/1.0.0` and `/connectivity-bulk/1.0.0`
-- `createPinningHttpRequestHandler()` for embedding `/health`, `/multiaddrs`, `/pinning/*`, and `/ipfs/*`
-- `PinningHttpServer` as a small HTTP(S) wrapper around that request handler
+- `connectivityDebugProtocolsService()` for opt-in `/connectivity-echo/1.0.0` and
+  `/connectivity-bulk/1.0.0`.
+- `createPinningHttpRequestHandler()` for embedding `/health`, `/multiaddrs`, `/pinning/*`, and
+  `/ipfs/*`.
+- `PinningHttpServer` as a small HTTP(S) wrapper around that request handler.
 
-In the default `startRelay()` runtime, those debug protocols stay disabled unless you either:
+In the default `startRelay()` runtime those debug protocols stay disabled unless you either:
 
 - pass `debugProtocols` programmatically, or
-- set `RELAY_CONNECTIVITY_ECHO_ENABLED=1` and/or `RELAY_CONNECTIVITY_BULK_ENABLED=1`
+- set `RELAY_CONNECTIVITY_ECHO_ENABLED=1` and/or `RELAY_CONNECTIVITY_BULK_ENABLED=1`.
 
 ## Install
 
@@ -24,10 +33,10 @@ Published package:
 npm install orbitdb-relay
 ```
 
-If you need this branch before it is published:
+To pin an unreleased branch, install from Git:
 
 ```bash
-npm install github:NiKrause/orbitdb-relay#feat/libp2p-orbitdb-replication-service
+npm install github:NiKrause/orbitdb-relay#<branch>
 ```
 
 Local checkout:
@@ -36,23 +45,23 @@ Local checkout:
 npm install ../path/to/orbitdb-relay
 ```
 
-## What Your Project Still Provides
+## What your project still provides
 
 `orbitdbReplicationService()` plugs into your libp2p node, but your project still owns:
 
-- the libp2p transports / muxers / encryption / discovery stack
-- the shared `datastore`
-- the shared `blockstore`
-- starting and stopping the libp2p node
+- the libp2p transports / muxers / encryption / discovery stack,
+- the shared `datastore`,
+- the shared `blockstore`,
+- starting and stopping the libp2p node.
 
 The service itself owns:
 
-- its Helia instance
-- its OrbitDB instance
-- OrbitDB pubsub sync listeners for `/orbitdb/*`
-- media-CID extraction and Helia pinning
+- its Helia instance,
+- its OrbitDB instance,
+- OrbitDB pubsub sync listeners for `/orbitdb/*`,
+- media-CID extraction and Helia pinning.
 
-## Minimal Example
+## Minimal example
 
 ```ts
 import { join } from 'node:path'
@@ -145,17 +154,19 @@ Additional reusable exports:
 
 Init options:
 
-- `datastore`: shared datastore used by the host node
-- `blockstore`: shared blockstore used by the host node
-- `orbitdbDirectory?`: optional directory for OrbitDB metadata
+- `datastore` — shared datastore used by the host node.
+- `blockstore` — shared blockstore used by the host node.
+- `orbitdbDirectory?` — optional directory for OrbitDB metadata.
 
 ## Requirements
 
-- The service declares a libp2p dependency on `@libp2p/pubsub`, so your node must provide a `pubsub` service.
-- In practice you will usually also want `identify`, plus whatever transports and discovery mechanisms your app uses.
-- Your node should share the same datastore/blockstore objects with the replication service.
+- The service declares a libp2p dependency on `@libp2p/pubsub`, so your node **must** provide a
+  `pubsub` service.
+- In practice you will usually also want `identify`, plus whatever transports and discovery
+  mechanisms your app uses.
+- Your node should share the same `datastore`/`blockstore` objects with the replication service.
 
-## Lifecycle Notes
+## Lifecycle notes
 
 - `libp2p.start()` starts the replication service automatically.
 - `libp2p.stop()` stops the replication service, its Helia instance, and its OrbitDB instance.
@@ -163,6 +174,15 @@ Init options:
 
 ## Troubleshooting
 
-- If `orbitdbReplicationService` is missing from the import, you are probably on an older published version that predates this export.
-- If you are testing a branch before release, install from Git or a local checkout instead of the registry.
-- If your node does not provide `pubsub`, libp2p will reject the service at startup because of the declared dependency.
+- If `orbitdbReplicationService` is missing from the import, you are probably on an older published
+  version that predates this export.
+- If you are testing a branch before release, install from Git or a local checkout instead of the
+  registry.
+- If your node does not provide `pubsub`, libp2p will reject the service at startup because of the
+  declared dependency.
+
+## Serving the pinning HTTP routes yourself
+
+If you want the `/health`, `/multiaddrs`, `/pinning/*`, and `/ipfs/*` routes without the full
+metrics server, mount the shared handler with `createPinningHttpRequestHandler()` (or wrap it in
+`PinningHttpServer`). The full contract is documented in the [HTTP API reference](../reference/http-api.md).
