@@ -1,0 +1,5 @@
+# Isolate this docs site from the repo-root pnpm workspace so `pnpm install`
+# here installs the Docusaurus dependencies into docs/docusaurus/node_modules
+# instead of being captured by the relay's root workspace. This file marks
+# docs/docusaurus as its own (single-package) workspace root.
+packages: []

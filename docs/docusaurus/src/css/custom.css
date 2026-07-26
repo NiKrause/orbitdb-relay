@@ -1,0 +1,352 @@
+/*
+ * orbitdb-relay documentation theme — Le-Space brand system (Style Guide V1.0).
+ * Palette: Deep Space / Nebula / Horizon / Starlight / Stardust,
+ * Signal Coral (primary action) and Sync Cyan (links, sync).
+ * Fonts are self-hosted via @fontsource (no third-party CDN).
+ */
+@import '@fontsource/inter/400.css';
+@import '@fontsource/inter/600.css';
+@import '@fontsource/inter/700.css';
+@import '@fontsource/jetbrains-mono/400.css';
+@import '@fontsource/jetbrains-mono/700.css';
+
+:root {
+  /* Sync Cyan (light): links, active navigation */
+  --ifm-color-primary: #0e86c4;
+  --ifm-color-primary-dark: #0c78b0;
+  --ifm-color-primary-darker: #0b71a6;
+  --ifm-color-primary-darkest: #095d89;
+  --ifm-color-primary-light: #1094d8;
+  --ifm-color-primary-lighter: #119be2;
+  --ifm-color-primary-lightest: #2fadef;
+
+  /* Brand tokens */
+  --rb-coral: #e8503f;
+  --rb-coral-contrast: #ffffff;
+  --rb-ink: #141b2e;
+  --rb-card-bg: #ffffff;
+  --rb-card-border: #d9e0ec;
+
+  --ifm-background-color: #ffffff;
+  --ifm-font-color-base: var(--rb-ink);
+  --ifm-heading-color: var(--rb-ink);
+  --ifm-code-font-size: 90%;
+  --ifm-font-family-base: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-heading-font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --ifm-font-family-monospace: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Noto Sans Mono', Menlo, monospace;
+  --ifm-navbar-background-color: rgba(255, 255, 255, 0.92);
+  --ifm-footer-background-color: #0b0e15;
+  --ifm-card-border-radius: 10px;
+  --ifm-button-border-radius: 8px;
+  --ifm-global-radius: 8px;
+}
+
+[data-theme='dark'] {
+  /* Sync Cyan (dark) */
+  --ifm-color-primary: #58c7f3;
+  --ifm-color-primary-dark: #38bcf1;
+  --ifm-color-primary-darker: #28b7f0;
+  --ifm-color-primary-darkest: #0fa4e0;
+  --ifm-color-primary-light: #78d2f5;
+  --ifm-color-primary-lighter: #88d7f6;
+  --ifm-color-primary-lightest: #b8e7fa;
+
+  --rb-coral: #ff6b5b;
+  --rb-coral-contrast: #0b0e15;
+  --rb-card-bg: #141926;
+  --rb-card-border: #232b3d;
+
+  /* Deep Space surfaces, Starlight/Stardust text */
+  --ifm-background-color: #0b0e15;
+  --ifm-background-surface-color: #141926;
+  --ifm-font-color-base: #a8b3c7;
+  --ifm-heading-color: #edf1f8;
+  --ifm-navbar-background-color: rgba(11, 14, 21, 0.88);
+  --ifm-footer-background-color: #0b0e15;
+  --ifm-toc-border-color: #232b3d;
+  --ifm-table-border-color: #232b3d;
+  --ifm-color-emphasis-300: #232b3d;
+  --ifm-code-background: #141926;
+}
+
+/* Wordmark voice: navbar title in JetBrains Mono Bold */
+.navbar__title {
+  font-family: var(--ifm-font-family-monospace);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+[data-theme='dark'] .navbar {
+  border-bottom: 1px solid #232b3d;
+}
+
+[data-theme='dark'] .footer {
+  border-top: 1px solid #232b3d;
+}
+
+.footer--dark {
+  --ifm-footer-background-color: #0b0e15;
+  --ifm-footer-color: #a8b3c7;
+  --ifm-footer-link-color: #a8b3c7;
+  --ifm-footer-title-color: #edf1f8;
+}
+
+.footer__copyright {
+  color: #6b7690;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.78rem;
+}
+
+/* Signal Coral is reserved for the primary call to action */
+.button--primary {
+  --ifm-button-background-color: var(--rb-coral);
+  --ifm-button-border-color: var(--rb-coral);
+  color: var(--rb-coral-contrast);
+}
+
+.button--primary:hover,
+.button--primary:focus {
+  --ifm-button-background-color: var(--rb-coral);
+  --ifm-button-border-color: var(--rb-coral);
+  color: var(--rb-coral-contrast);
+  filter: brightness(1.06);
+}
+
+.button--secondary {
+  --ifm-button-background-color: transparent;
+  --ifm-button-border-color: var(--rb-card-border);
+  color: var(--ifm-font-color-base);
+}
+
+[data-theme='dark'] .button--secondary {
+  --ifm-button-background-color: #141926;
+  --ifm-button-border-color: #232b3d;
+  color: #edf1f8;
+}
+
+.hero--shared {
+  background: var(--ifm-background-color);
+  border-bottom: 1px solid var(--rb-card-border);
+  padding: 3.75rem 0 4rem;
+  position: relative;
+  overflow: hidden;
+}
+
+/* Calm starfield: a few Starlight dots, dark mode only */
+[data-theme='dark'] .hero--shared::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    radial-gradient(1.2px 1.2px at 12% 22%, rgba(237, 241, 248, 0.35) 50%, transparent 51%),
+    radial-gradient(1px 1px at 34% 68%, rgba(237, 241, 248, 0.2) 50%, transparent 51%),
+    radial-gradient(1.4px 1.4px at 58% 14%, rgba(237, 241, 248, 0.3) 50%, transparent 51%),
+    radial-gradient(1px 1px at 76% 46%, rgba(237, 241, 248, 0.22) 50%, transparent 51%),
+    radial-gradient(1.2px 1.2px at 90% 80%, rgba(237, 241, 248, 0.28) 50%, transparent 51%),
+    radial-gradient(1px 1px at 22% 88%, rgba(237, 241, 248, 0.18) 50%, transparent 51%);
+}
+
+.hero--shared > .container {
+  position: relative;
+}
+
+.hero__mark {
+  display: block;
+  height: 72px;
+  width: auto;
+  margin-bottom: 1.25rem;
+}
+
+/* Eyebrow: JetBrains Mono Bold, caps, Signal Coral */
+.hero__kicker {
+  color: var(--rb-coral);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.75rem;
+  text-transform: uppercase;
+}
+
+.hero__title {
+  font-size: clamp(2.5rem, 5vw, 4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  line-height: 1.05;
+  max-width: 14ch;
+}
+
+.hero__subtitle {
+  font-size: clamp(1.1rem, 2vw, 1.35rem);
+  line-height: 1.55;
+  max-width: 54rem;
+}
+
+.hero__description {
+  color: var(--ifm-font-color-base);
+  font-size: 1rem;
+  line-height: 1.7;
+  max-width: 50rem;
+}
+
+.hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+}
+
+.hero__version {
+  color: #6b7690;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.85rem;
+  margin: 1rem 0 0;
+}
+
+.shared-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 2rem;
+}
+
+.shared-cli {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  margin-top: 2.5rem;
+  align-items: stretch;
+}
+
+.shared-cli__copy,
+.shared-cli__code,
+.shared-flow,
+.shared-card {
+  background: var(--rb-card-bg);
+  border: 1px solid var(--rb-card-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 42px rgba(20, 27, 46, 0.06);
+  padding: 1.4rem;
+}
+
+[data-theme='dark'] .shared-cli__copy,
+[data-theme='dark'] .shared-cli__code,
+[data-theme='dark'] .shared-flow,
+[data-theme='dark'] .shared-card {
+  box-shadow: none;
+}
+
+a.shared-card {
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 150ms ease;
+}
+
+a.shared-card:hover {
+  border-color: var(--ifm-color-primary);
+}
+
+.shared-cli__eyebrow {
+  color: var(--rb-coral);
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  margin-bottom: 0.5rem;
+  text-transform: uppercase;
+}
+
+.shared-cli__copy h2 {
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  margin-bottom: 0.75rem;
+}
+
+.shared-cli__copy p:last-of-type {
+  margin-bottom: 1.25rem;
+}
+
+.shared-cli__code pre {
+  margin-bottom: 0;
+}
+
+.shared-flow {
+  display: grid;
+  gap: 1.25rem;
+  grid-template-columns: minmax(0, 0.75fr) minmax(280px, 1fr);
+  margin-top: 1.25rem;
+}
+
+.shared-flow h2 {
+  font-size: clamp(1.4rem, 2.5vw, 1.9rem);
+  margin-bottom: 0.75rem;
+}
+
+.shared-flow p:last-child {
+  margin-bottom: 0;
+}
+
+.shared-flow__steps {
+  counter-reset: flow-step;
+  display: grid;
+  gap: 0.6rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shared-flow__steps li {
+  align-items: center;
+  background: rgba(14, 134, 196, 0.06);
+  border: 1px solid var(--rb-card-border);
+  border-radius: 8px;
+  counter-increment: flow-step;
+  display: flex;
+  gap: 0.75rem;
+  min-height: 2.65rem;
+  padding: 0.65rem 0.8rem;
+}
+
+.shared-flow__steps li::before {
+  align-items: center;
+  background: var(--rb-ink);
+  border-radius: 999px;
+  color: #ffffff;
+  content: counter(flow-step);
+  display: inline-flex;
+  flex: 0 0 1.7rem;
+  font-family: var(--ifm-font-family-monospace);
+  font-size: 0.8rem;
+  font-weight: 700;
+  height: 1.7rem;
+  justify-content: center;
+  width: 1.7rem;
+}
+
+[data-theme='dark'] .shared-flow__steps li {
+  background: rgba(88, 199, 243, 0.06);
+  border-color: #232b3d;
+}
+
+[data-theme='dark'] .shared-flow__steps li::before {
+  background: #232b3d;
+  color: #edf1f8;
+}
+
+.shared-card h3 {
+  margin-bottom: 0.5rem;
+}
+
+.shared-card p {
+  margin-bottom: 0;
+}
+
+@media (max-width: 800px) {
+  .hero--shared {
+    padding-top: 2.75rem;
+  }
+
+  .shared-flow {
+    grid-template-columns: 1fr;
+  }
+}

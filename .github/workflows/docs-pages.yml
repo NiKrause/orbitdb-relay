@@ -1,0 +1,73 @@
+name: Docs Pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/docusaurus/**'
+      - '.github/workflows/docs-pages.yml'
+      - 'README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: docs-pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          # Docusaurus showLastUpdateTime reads git history; a shallow clone
+          # would leave every page without a last-updated date.
+          fetch-depth: 0
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.33.0
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24.x'
+
+      # The docs site is its own pnpm workspace root (docs/docusaurus/
+      # pnpm-workspace.yaml), so install and build run inside that directory
+      # rather than through the relay's root workspace.
+      - name: Install docs dependencies
+        working-directory: docs/docusaurus
+        run: pnpm install --frozen-lockfile --prefer-offline
+
+      - name: Build docs
+        working-directory: docs/docusaurus
+        run: pnpm build
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+        with:
+          enablement: true
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: docs/docusaurus/build
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

@@ -100,7 +100,7 @@ This is the primary "why this exists" feature: enabling OrbitDB to verify entrie
 
 Detailed reference:
 
-- `docs/relay-media-pinning.md` (full flow, extraction rules, queueing, shutdown, and test scenario)
+- `docs/docusaurus/docs/concepts/media-pinning.md` (full flow, extraction rules, queueing, shutdown, and test scenario)
 
 Event wiring in `src/events/handlers.ts`:
 
@@ -125,14 +125,14 @@ Important caveat for agents:
 
 ### 5. Prometheus metrics endpoint
 
-Human-facing route reference: **`docs/http-api.md`**.
+Human-facing route reference: **`docs/docusaurus/docs/reference/http-api.md`**.
 
 `src/services/metrics.ts`:
 
 - HTTP server exposes:
   - `GET /metrics` for Prometheus scraping
   - `GET /health`, `GET /multiaddrs`, pinning JSON routes (`/pinning/*`), and `GET /ipfs/<cid>` (pinned-local bytes only; see `streamPinnedCid` in `DatabaseService`)
-- When `METRICS_HTTPS_ENABLED` is set and AutoTLS has PEM material, the same routes are also served over HTTPS on `METRICS_HTTPS_PORT` (see `docs/http-api.md`).
+- When `METRICS_HTTPS_ENABLED` is set and AutoTLS has PEM material, the same routes are also served over HTTPS on `METRICS_HTTPS_PORT` (see `docs/docusaurus/docs/reference/http-api.md`).
 - **CORS:** all of the above respond with `Access-Control-Allow-*` so browser `fetch` from another origin works. Default allow-all: `METRICS_CORS_ORIGIN=*` (unset). Use a comma-separated allowlist of exact origins in production. `OPTIONS` preflight returns `204`.
 - Defaults to port `9090`, but handles `EADDRINUSE` by retrying on an ephemeral port if the requested port is not `0`.
 - Uses a singleton instance so creating `MetricsServer` multiple times does not double-register metrics.
@@ -164,9 +164,9 @@ Human-facing route reference: **`docs/http-api.md`**.
 
 - `METRICS_PORT` (default `9090`, `0` for ephemeral)
 - `METRICS_DISABLED=true|1`
-- `METRICS_HTTPS_ENABLED=true|1`: when set, after AutoTLS provisions a cert, also listen for HTTPS on `METRICS_HTTPS_PORT` with the same routes; clients must use a hostname under `*.<base36PeerId>.libp2p.direct` (see `GET /health` / `docs/http-api.md`).
+- `METRICS_HTTPS_ENABLED=true|1`: when set, after AutoTLS provisions a cert, also listen for HTTPS on `METRICS_HTTPS_PORT` with the same routes; clients must use a hostname under `*.<base36PeerId>.libp2p.direct` (see `GET /health` / `docs/docusaurus/docs/reference/http-api.md`).
 - `METRICS_HTTPS_PORT` (default `9443`)
-- Nym VPN users: choose ports from [Nym exit policy](https://nymtech.net/.wellknown/network-requester/exit-policy.txt); see **`docs/nym-vpn-ports.md`**
+- Nym VPN users: choose ports from [Nym exit policy](https://nymtech.net/.wellknown/network-requester/exit-policy.txt); see **`docs/docusaurus/docs/reference/ports.md`**
 - `METRICS_CORS_ORIGIN`: `*` (default) or comma-separated allowlist, e.g. `https://app.example.com,http://localhost:5173`
 - `METRICS_CORS_ALLOW_HEADERS` (optional): defaults to `Content-Type, Authorization`
 - `METRICS_CORS_MAX_AGE` (optional): preflight cache seconds, default `86400`
@@ -225,7 +225,7 @@ Note: `src/utils/logger.ts` uses `@libp2p/logger` namespaces under `le-space:rel
 - `--test` key override expects a *hex string of protobuf bytes*, not a raw seed or base64.
 - Sync waits for update events before enqueueing pin jobs; if no update is observed during timeout, no new media pin enqueue occurs in that sync run.
 - Shutdown now attempts coordinated queue/listener teardown, metrics server close, OrbitDB stop, and IPFS/libp2p stop; ordering still matters when extending lifecycle code.
-- Under heavy load, **Node** can rarely **abort** in **`CipherJob` / `errors->Empty()`** (OpenSSL/WebCrypto thread pool), often involving **`@peculiar/webcrypto`** (libp2p TLS/WebRTC). Mitigations: **`UV_THREADPOOL_SIZE`** (e.g. `1` to serialize), **`RELAY_DISABLE_WEBRTC`**, or a different Node patch build — see **`docs/systemd-deployment.md`** (Troubleshooting).
+- Under heavy load, **Node** can rarely **abort** in **`CipherJob` / `errors->Empty()`** (OpenSSL/WebCrypto thread pool), often involving **`@peculiar/webcrypto`** (libp2p TLS/WebRTC). Mitigations: **`UV_THREADPOOL_SIZE`** (e.g. `1` to serialize), **`RELAY_DISABLE_WEBRTC`**, or a different Node patch build — see **`docs/docusaurus/docs/getting-started/systemd.md`** (Troubleshooting).
 
 ## Files Worth Reading First
 

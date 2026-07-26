@@ -11,10 +11,25 @@ See `AGENTS.md` for an architecture and feature guide (entrypoints, data flow, e
 
 ## Docs
 
-- Relay media pinning flow: `docs/relay-media-pinning.md`
-- HTTP API (`/health`, `/multiaddrs`, `/pinning/*`, `/ipfs/*`, `/metrics`): `docs/http-api.md`
-- Libp2p service integration guide: `docs/libp2p-service.md`
-- [OrbitDB peer directory, native heads reconnect, and explicit recovery](docs/orbitdb-peer-recovery.md) — why the relay needs this orchestration around OrbitDB's native replication
+Full documentation lives in the **Docusaurus site** under [`docs/docusaurus/`](docs/docusaurus).
+Build and browse it locally:
+
+```bash
+pnpm --dir docs/docusaurus install
+pnpm --dir docs/docusaurus start   # dev server on http://localhost:3000/orbitdb-relay/
+# or a production build:
+pnpm --dir docs/docusaurus build
+```
+
+It covers, among others:
+
+- **Overview** — what orbitdb-relay is and when you need it.
+- **Getting Started** — Quickstart (CLI), Docker Compose, systemd.
+- **Concepts** — Architecture, Sync & the #1255 workaround, Media pinning flow, Peer recovery.
+- **Guides** — Access controllers, Identity providers, Using as a library, libp2p integration.
+- **Reference** — HTTP API, CLI, Environment variables, Version compatibility, Ports.
+
+Internal design notes that are not user documentation live in [`docs/internal/`](docs/internal).
 
 ## CLI
 
@@ -80,7 +95,8 @@ orbitdb-relay --test
 
 The package still exports `startRelay()` as the compatibility wrapper used by the CLI and the existing tests.
 
-For a fuller install + integration walkthrough, see `docs/libp2p-service.md`.
+For a fuller install + integration walkthrough, see the **libp2p integration** guide in the
+Docusaurus site (`docs/docusaurus/docs/guides/libp2p-integration.md`).
 
 It also exports reusable building blocks for embedded consumers:
 
