@@ -1,3 +1,75 @@
+/**
+ * Relay / pinner OrbitDB layer.
+ *
+ * {@link DatabaseService} is the relay's entire OrbitDB surface. Browsers in
+ * the todo app come and go, so they hand their databases to this always-on
+ * relay to keep them replicated and their referenced media pinned. For each
+ * database the relay is asked about, this service:
+ *   - opens and retains the OrbitDB instance (and its access-controller DB),
+ *   - runs a sync / heads-exchange pass that pulls the writer's entries into
+ *     the relay's local IPFS/LevelDB store,
+ *   - snapshots the resulting local state as a replication proof,
+ *   - pins any media CIDs (images, profile pictures, generic content CIDs)
+ *     referenced by the synced records, and
+ *   - re-announces the freshly synced heads so other subscribed browsers
+ *     actually converge.
+ * It also serves the pinning HTTP API and an on-demand libp2p heads protocol,
+ * registers the custom access controllers / identity providers the app needs,
+ * and records sync/replication metrics.
+ *
+ * Features implemented here:
+ *   - Database open with in-flight de-duplication ({@link DatabaseService.openDatabase},
+ *     {@link DatabaseService.retainOpenDatabase}/{@link DatabaseService.releaseOpenDatabase}
+ *     reference-count opens) and per-address sync de-duplication with coalescing
+ *     and an explicit "wait then run fresh" path
+ *     ({@link DatabaseService.syncAllOrbitDBRecordsWithResult}).
+ *   - Access-controller registration in {@link DatabaseService.initialize}:
+ *     the built-in `orbitdb` controller from @orbitdb/core plus the local
+ *     `ipfs` ({@link IPFSAccessController}), `orbitdb-deferred`
+ *     ({@link DeferredOrbitDBAccessController}) and `todo-delegation`
+ *     ({@link DelegatedTodoAccessController} / DelegatedTodoAccessControllerBase)
+ *     controllers.
+ *   - Identity-provider registration: `publickey` (built into @orbitdb/core),
+ *     `did`, `webauthn` and `webauthn-varsig`, plus a relay-side identity
+ *     verification fallback for mixed writer modes.
+ *   - Pinning HTTP handlers ({@link DatabaseService.createPinningHttpHandlers})
+ *     backing `/pinning/*`, and an IPFS gateway that streams UnixFS/raw content
+ *     for a CID only when it is locally pinned
+ *     ({@link DatabaseService.streamPinnedIpfsContent}).
+ *   - A heads re-announce workaround for the OrbitDB Sync first-entry deadlock
+ *     (upstream issue orbitdb/orbitdb#1255, {@link https://github.com/orbitdb/orbitdb/issues/1255}):
+ *     see {@link DatabaseService.republishHeadsToSubscribers}. This is a
+ *     relay-side mitigation — it re-publishes already-synced heads through
+ *     OrbitDB's own `sync.add()` so late-joining subscribers receive them — and
+ *     is NOT a fix for Sync itself.
+ *   - An on-demand heads libp2p protocol
+ *     ({@link DatabaseService.handleOnDemandHeadsProtocol}) so a peer can pull
+ *     heads for a known database even after the relay has closed it, plus
+ *     known-subscriber reconnection ({@link DatabaseService.reconnectKnownDatabasePeers})
+ *     to re-trigger OrbitDB's edge-triggered heads exchange.
+ *   - Replication proofs / metrics: {@link DatabaseService.pinnedDatabasesByAddress}
+ *     records the last snapshot (entry count + last record) per address, exposed
+ *     via the pinning stats/databases handlers and the {@link MetricsServer}.
+ *
+ * Overall sync flow (see {@link DatabaseService.syncAllOrbitDBRecordsWithResult}):
+ * a sync request first de-duplicates against any in-flight sync for the same
+ * address. It loads the database manifest (to learn the name and the
+ * access-controller address), remembers both addresses as "known", and
+ * pre-opens the access-controller database so writer identities can be verified
+ * before entries arrive. It then opens (and retains) the target database,
+ * optionally reconnecting known subscribers to nudge OrbitDB's edge-triggered
+ * heads exchange, and waits briefly for an `update` event burst. Received
+ * updates (or a `db.all()` fallback scan) are mined for media CIDs, which are
+ * queued for pinning; the local state is snapshotted as a proof and stored in
+ * {@link DatabaseService.pinnedDatabasesByAddress}. When there is replicated
+ * state the database is kept open (so OrbitDB keeps its native heads topology
+ * registered) and, if a genuine update was received, the heads are re-announced
+ * to subscribers. Databases opened only transiently are released in a `finally`
+ * block.
+ *
+ * @remarks Documentation-only module header; describes behavior implemented by
+ * the class and helpers below.
+ */
 import {
   createOrbitDB,
   Identities,
@@ -57,15 +129,32 @@ const MANIFEST_LOAD_TIMEOUT_MS = 5_000;
 
 /** Deduped media CID plus which payload fields referenced it (for sync/pin logs). */
 export type ExtractedMediaCid = { cid: string; sources: string[] };
+/**
+ * A shared in-flight operation keyed by database address, used to de-duplicate
+ * concurrent opens and syncs. `startedAt` (epoch ms) lets callers detect a
+ * stale operation and decide whether to keep waiting or coalesce.
+ */
 type InFlightRecord<T> = {
   promise: Promise<T>;
   startedAt: number;
 };
+/**
+ * Summary of a database's local state captured right after a sync pass, used as
+ * a human-readable replication proof in logs and in {@link PinnedDatabaseRecord}.
+ * `entryCount` is null when it could not be counted (e.g. only an update burst
+ * was observed); `source` names how the snapshot was produced (`db.all()`,
+ * `iterator`, `update-event burst only`, …).
+ */
 export type DatabaseSyncSnapshot = {
   entryCount: number | null;
   lastRecord: Record<string, unknown> | null;
   source: string;
 };
+/**
+ * Persisted record of the most recent successful sync for one database address,
+ * surfaced by the pinning HTTP handlers. `snapshotSource` mirrors
+ * {@link DatabaseSyncSnapshot.source}.
+ */
 export type PinnedDatabaseRecord = {
   address: string;
   lastSyncedAt: string;
@@ -74,6 +163,18 @@ export type PinnedDatabaseRecord = {
   snapshotSource: string;
 };
 
+/**
+ * Best-effort coercion of an arbitrary value into a single {@link Uint8Array}.
+ *
+ * IPFS/Helia block APIs return bytes in several shapes depending on the
+ * backend (Uint8Array, ArrayBuffer, other typed-array/DataView views, plain
+ * number arrays, or objects exposing `subarray`/`slice`). This normalizes all
+ * of them so downstream decoding (manifest/DAG-CBOR) sees plain bytes.
+ *
+ * @param value - The candidate byte container.
+ * @returns The bytes as a `Uint8Array`; an empty array when `value` is not a
+ * recognizable byte source.
+ */
 function toUint8Array(value: unknown): Uint8Array {
   if (value instanceof Uint8Array) return value;
   if (value instanceof ArrayBuffer) return new Uint8Array(value);
@@ -96,6 +197,19 @@ function toUint8Array(value: unknown): Uint8Array {
   return new Uint8Array();
 }
 
+/**
+ * Fully materialize a (possibly streamed) byte source into one contiguous
+ * {@link Uint8Array}.
+ *
+ * Helia's blockstore may hand back an async iterable of chunks, a sync iterable
+ * of chunks, or a single buffer. Async iterables are drained and concatenated;
+ * non-empty sync iterables of chunks are likewise concatenated; anything else
+ * falls back to {@link toUint8Array}. Used before decoding an OrbitDB manifest
+ * block.
+ *
+ * @param value - A byte buffer, or a sync/async iterable of byte chunks.
+ * @returns A promise for the concatenated bytes.
+ */
 async function collectUint8Array(value: unknown): Promise<Uint8Array> {
   if (
     value != null &&
@@ -127,6 +241,13 @@ async function collectUint8Array(value: unknown): Promise<Uint8Array> {
   return toUint8Array(value);
 }
 
+/**
+ * Concatenate byte chunks into a single {@link Uint8Array} sized to their total
+ * length.
+ *
+ * @param chunks - Ordered byte chunks to join.
+ * @returns One `Uint8Array` containing every chunk in order.
+ */
 function concatUint8Arrays(chunks: Uint8Array[]): Uint8Array {
   const size = chunks.reduce((total, chunk) => total + chunk.byteLength, 0);
   const output = new Uint8Array(size);
@@ -164,6 +285,12 @@ export class DatabaseService {
   /** Peers observed subscribing to a native OrbitDB database topic. */
   knownDatabasePeers: Map<string, Map<string, unknown>>;
 
+  /**
+   * Initialize all in-memory bookkeeping (metrics server, the caches/maps for
+   * open databases, in-flight opens/syncs, use counts, pinned records and known
+   * peers, and the bounded media-pin queue). Does not touch IPFS/OrbitDB — call
+   * {@link DatabaseService.initialize} with a running IPFS node before use.
+   */
   constructor() {
     this.metrics = new MetricsServer();
     this.identityDatabases = new Map();
@@ -186,6 +313,17 @@ export class DatabaseService {
     this.knownDatabasePeers = new Map();
   }
 
+  /**
+   * Record a peer seen subscribing to a database's native OrbitDB topic, keyed
+   * by database address then peer id. These are later re-dialed by
+   * {@link DatabaseService.reconnectKnownDatabasePeers} to re-trigger OrbitDB's
+   * edge-triggered heads exchange. Ignores non-`/orbitdb/` addresses and peers
+   * that stringify to nothing useful (`""` / `[object Object]`).
+   *
+   * @param dbAddress - The OrbitDB database address the peer subscribed to.
+   * @param peer - The peer id (or object with `toString()`); stored as-is for
+   * later dialing.
+   */
   rememberDatabasePeer(dbAddress: string, peer: unknown): void {
     if (!dbAddress?.startsWith(ORBITDB_PREFIX) || peer == null) return;
     const peerId = (peer as any)?.toString?.() || String(peer);
@@ -198,6 +336,21 @@ export class DatabaseService {
     peers.set(peerId, peer);
   }
 
+  /**
+   * Re-dial every known subscriber of a database (hang up then dial) after the
+   * database has been opened.
+   *
+   * OrbitDB's Sync bootstrap is edge-triggered: a writer only dials the heads
+   * exchange when it observes a fresh `subscription-change` for the topic. When
+   * the relay reopens a database whose subscribers are already connected, no
+   * such edge fires. Forcing a reconnect makes libp2p re-notify OrbitDB's
+   * native heads topology (registered during open) without needing a custom
+   * data protocol. Best-effort and fault-tolerant: failures are logged, never
+   * thrown, and the local peer is skipped.
+   *
+   * @param dbAddress - Address of the just-opened database whose subscribers to
+   * reconnect.
+   */
   private async reconnectKnownDatabasePeers(dbAddress: string): Promise<void> {
     const peers = this.knownDatabasePeers.get(dbAddress);
     const libp2p = (this.ipfs as any)?.libp2p;
@@ -246,17 +399,52 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * List the on-demand heads libp2p protocol ids for every database the relay
+   * currently knows about (one per known address, of the form
+   * `/orbitdb/heads/orbitdb/<hash>`). Used to advertise/handle the on-demand
+   * heads protocol so peers can pull heads even after the relay closed the DB.
+   *
+   * @returns An array of protocol id strings.
+   */
   getKnownHeadsProtocols(): string[] {
     return Array.from(this.knownDatabasesByAddress).map(
       (dbAddress) => `${ORBITDB_HEADS_PREFIX}${dbAddress}`,
     );
   }
 
+  /**
+   * Whether a libp2p protocol id is an on-demand heads protocol for a database
+   * this relay knows about.
+   *
+   * @param protocol - A libp2p protocol id to test.
+   * @returns True when it parses to a known `/orbitdb/` database address.
+   */
   isKnownHeadsProtocol(protocol: string): boolean {
     const dbAddress = this.dbAddressFromHeadsProtocol(protocol);
     return dbAddress != null && this.knownDatabasesByAddress.has(dbAddress);
   }
 
+  /**
+   * Handle an inbound on-demand heads-protocol stream for a database the relay
+   * has replicated but may have since closed.
+   *
+   * A browser reconnecting after downtime dials `/orbitdb/heads/<address>` to
+   * pull the latest heads. The relay may not have that database open, so this
+   * method (re)opens it just long enough to serve the request: it ensures a
+   * connection back to the requesting peer, retains the database open, waits
+   * for OrbitDB to register the real heads-protocol handler, invokes it, and
+   * always releases the database afterward.
+   *
+   * @param protocol - The dialed heads protocol id (must map to a known DB).
+   * @param context - libp2p stream context; `connection.remotePeer` identifies
+   * the caller so the relay can dial back if needed.
+   * @param getRegisteredHandler - Lookup for OrbitDB's own handler registered
+   * for `protocol`; may throw until registration completes (polled with a
+   * timeout).
+   * @throws If no replicated database is known for `protocol`, or the handler
+   * does not register within the timeout.
+   */
   async handleOnDemandHeadsProtocol(
     protocol: string,
     context: { connection?: { remotePeer?: unknown } },
@@ -281,6 +469,21 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Build the callback bundle that backs the pinning HTTP API exposed by the
+   * {@link MetricsServer}. The returned handlers are thin adapters over this
+   * service's state:
+   *   - `getStats` — totals for pinned databases, sync operations, failed syncs
+   *     and pinned media CIDs.
+   *   - `getDatabases` — all pinned-database records, or a single record looked
+   *     up by (optionally URL-encoded) address.
+   *   - `syncDatabase` — force a fresh sync of one address and return a
+   *     structured result; if the first pass produces no local proof it retries
+   *     once after topic/heads registration.
+   *   - `streamPinnedCid` — gateway read of locally-pinned IPFS content.
+   *
+   * @returns A {@link PinningHttpHandlers} object wired to this instance.
+   */
   createPinningHttpHandlers(): PinningHttpHandlers {
     return {
       getStats: () => ({
@@ -775,6 +978,28 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Bootstrap the OrbitDB stack on top of a running IPFS/Helia node.
+   *
+   * Registers the identity providers the todo app uses — `did` (with a
+   * key-DID resolver), `webauthn` (worker WebAuthn + keystore) and
+   * `webauthn-varsig` (hardware varsig) — on top of the `publickey` provider
+   * built into @orbitdb/core, and the access controllers `ipfs`
+   * ({@link IPFSAccessController}), `todo-delegation`
+   * ({@link DelegatedTodoAccessController}) and `orbitdb-deferred`
+   * ({@link DeferredOrbitDBAccessController}) alongside core's built-in
+   * `orbitdb` controller. It then creates the OrbitDB instance with a relay
+   * identities object that adds a `verifyIdentityFallback`: the relay must
+   * verify writers signed under mixed modes (e.g. varsig plus non-varsig DID
+   * signatures), and the DID provider's `verifyIdentity` throws or leaks
+   * unhandled rejections for non-`did` shapes, so the fallback only runs DID
+   * JWS verification for actual `did` identities.
+   *
+   * @param ipfs - A running IPFS/Helia node (must expose `libp2p`, `blockstore`
+   * and `pins`). Stored on `this.ipfs`.
+   * @param directory - Optional OrbitDB storage directory; defaults to
+   * OrbitDB's own default when omitted.
+   */
   async initialize(ipfs: any, directory?: string) {
     OrbitDBIdentityProviderDID.setDIDResolver(KeyDIDResolver.getResolver());
     useIdentityProvider(OrbitDBIdentityProviderDID as any);
@@ -808,6 +1033,24 @@ export class DatabaseService {
     });
   }
 
+  /**
+   * Extract every media CID referenced by a single record payload, together
+   * with which field(s) referenced each one.
+   *
+   * The todo app stores media references under many shapes across app versions,
+   * so this checks a broad set of fields: `imageCid`/`imageCID`/`image.cid`,
+   * the various `profilePicture*` forms (including the `_id`/`value` keyvalue
+   * shape), `mediaId`, `mediaIds[]`, and generic
+   * `cid`/`contentCid`/`ipfsCid`/`mediaCid`/`thumbnailCid`. It also recurses
+   * into a nested `value` that is either an object or a JSON-encoded string,
+   * up to a depth of 4, prefixing discovered sources with `value.`/`value(json).`
+   * so logs show provenance. CIDs are de-duplicated across all matching fields.
+   *
+   * @param payload - A record value (or nested value) to scan.
+   * @param depth - Internal recursion guard; callers pass 0.
+   * @returns One {@link ExtractedMediaCid} per distinct CID, each with its
+   * sorted list of source field names.
+   */
   private extractImageCidsFromPayload(
     payload: any,
     depth = 0,
@@ -926,6 +1169,16 @@ export class DatabaseService {
     }));
   }
 
+  /**
+   * Run {@link DatabaseService.extractImageCidsFromPayload} across many records
+   * and merge the results, de-duplicating CIDs and unioning their source
+   * field names across all records.
+   *
+   * @param records - Records to scan; each may be a raw value or a `{ value }`
+   * wrapper.
+   * @returns One {@link ExtractedMediaCid} per distinct CID found across all
+   * records, with sorted merged sources.
+   */
   private extractImageCids(records: any[]): ExtractedMediaCid[] {
     const byCid = new Map<string, Set<string>>();
 
@@ -945,6 +1198,15 @@ export class DatabaseService {
     }));
   }
 
+  /**
+   * Emit a sync-log line listing the media CIDs discovered for a database and
+   * where they came from.
+   *
+   * @param dbAddress - The database the CIDs were discovered in.
+   * @param entries - The extracted CIDs with their source fields.
+   * @param origin - Whether they came from live `update` events or a
+   * `db.all()` fallback scan.
+   */
   private logDiscoveredMediaCids(
     dbAddress: string,
     entries: ExtractedMediaCid[],
@@ -959,6 +1221,19 @@ export class DatabaseService {
     );
   }
 
+  /**
+   * Build a compact, log-safe debug summary of records when media-CID
+   * extraction found nothing, to help diagnose why records did not match any
+   * known media field.
+   *
+   * For up to `maxSamples` records it reports the top-level keys and a bounded
+   * preview of the `value` field (string preview or object key list), plus the
+   * full list of fields the extractor looks at. Does not include full payloads.
+   *
+   * @param records - The records that yielded no CIDs.
+   * @param maxSamples - Maximum number of records to sample (default 3).
+   * @returns A plain object with `recordCount`, `samples` and `fieldsWeMatch`.
+   */
   private summarizeMediaExtractionDebug(records: any[], maxSamples = 3) {
     const samples: unknown[] = [];
     const n = Math.min(records.length, maxSamples);
@@ -1010,6 +1285,17 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Emit a diagnostic sync-log line when records were present but no media CID
+   * matched, using {@link DatabaseService.summarizeMediaExtractionDebug} for a
+   * bounded hint. No-op for an empty record set.
+   *
+   * @param dbAddress - The database being scanned.
+   * @param dbName - Resolved database name, if known (for the log).
+   * @param origin - Whether the records came from `update` events or a
+   * `db.all()` scan.
+   * @param records - The records that failed to yield any CID.
+   */
   private logMediaExtractionMiss(
     dbAddress: string,
     dbName: string | null,
@@ -1028,6 +1314,15 @@ export class DatabaseService {
     );
   }
 
+  /**
+   * Produce a bounded, colorless `util.inspect` string of a value for sync
+   * logs, capping depth, array length and string length so a large record does
+   * not flood the logs. Falls back to `String(value)` if inspection throws.
+   *
+   * @param value - The value to render.
+   * @param maxString - Maximum rendered string length (default 800).
+   * @returns A single-line-safe preview string.
+   */
   private previewForSyncLog(value: unknown, maxString = 800): string {
     try {
       return inspect(value, {
@@ -1043,6 +1338,14 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Summarize the last row returned by `db.all()` for the sync log, keeping
+   * `hash`/`key` when present and a bounded preview of `value` (or the whole
+   * row when it has no `value`).
+   *
+   * @param row - The final `db.all()` row (may be null / non-object).
+   * @returns A small plain object safe to log.
+   */
   private summarizeLastDbRowForSyncLog(row: any): Record<string, unknown> {
     if (row == null) return { row: null };
     if (typeof row !== "object") return { row: String(row) };
@@ -1057,6 +1360,14 @@ export class DatabaseService {
     return out;
   }
 
+  /**
+   * Summarize the last entry yielded by a `db.iterator()` for the sync log,
+   * keeping identifying fields (`hash`/`key`/`id`/`clock`) and a bounded
+   * preview of `payload`/`value` (or the whole entry when neither is present).
+   *
+   * @param entry - The final iterator entry (may be null / non-object).
+   * @returns A small plain object safe to log.
+   */
   private summarizeLastIteratorEntryForSyncLog(
     entry: any,
   ): Record<string, unknown> {
@@ -1074,6 +1385,14 @@ export class DatabaseService {
     return out;
   }
 
+  /**
+   * Summarize the last entry seen in an `update`-event burst for the sync log:
+   * the entry `hash`, a truncated `identity` hash, and a bounded preview of the
+   * payload/value.
+   *
+   * @param entry - The final update-event entry.
+   * @returns A small plain object safe to log.
+   */
   private summarizeLastUpdateEntryForSyncLog(
     entry: any,
   ): Record<string, unknown> {
@@ -1092,6 +1411,23 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Capture a database's local state right after a sync pass as a replication
+   * proof for logs and {@link PinnedDatabaseRecord}.
+   *
+   * Prefers the cheapest accurate source available: if an `update` burst was
+   * observed it summarizes only that burst (entry count left null, since the
+   * burst is not a full count); otherwise it counts via `db.all()`; failing
+   * that it walks `db.iterator()` (capped at 100k entries); and if the database
+   * exposes neither it reports an "unknown" source. Errors are captured into
+   * the `source` string rather than thrown.
+   *
+   * @param db - The synced database instance.
+   * @param ctx - The update context from {@link DatabaseService.waitForUpdateEvent}
+   * (`updates` burst and whether any update arrived).
+   * @returns A {@link DatabaseSyncSnapshot}-shaped result: entry count (or
+   * null), summarized last record, and the source description.
+   */
   private async snapshotLocalStateAfterSync(
     db: any,
     ctx: { updates: any[]; didReceiveUpdate: boolean },
@@ -1160,6 +1496,18 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Pin one media CID into the local Helia node, driving the `pins.add` async
+   * generator to completion.
+   *
+   * Before pinning it probes the blockstore to log whether the root block is
+   * already local (a pin may still fetch missing DAG parts from the network).
+   * Throws on failure so the caller's pin queue can record the failure.
+   *
+   * @param imageCid - The CID string to pin (parsed to a {@link CID}).
+   * @param ctx - Context for logging: the owning `dbAddress` and the field
+   * `sources` that referenced this CID.
+   */
   private async pinImageCid(
     imageCid: string,
     ctx: { dbAddress: string; sources?: string[] },
@@ -1192,6 +1540,19 @@ export class DatabaseService {
     syncLog("Media pin ok: db=%s cid=%s", ctx.dbAddress, imageCid);
   }
 
+  /**
+   * Queue discovered media CIDs onto the bounded pin queue (concurrency 4),
+   * skipping any CID already pinned or already queued.
+   *
+   * Pinning runs asynchronously off the sync path: each task calls
+   * {@link DatabaseService.pinImageCid}, moving the CID from
+   * `queuedImageCids` to `pinnedImageCids` on success and logging (but
+   * swallowing) failures so a bad CID never rejects the queue. No-op while
+   * shutting down, when there are no entries, or when IPFS has no pin API.
+   *
+   * @param entries - Extracted media CIDs (with source fields) to pin.
+   * @param dbAddress - The owning database address, for logging.
+   */
   private enqueueImageCidsForPinning(
     entries: ExtractedMediaCid[],
     dbAddress: string,
@@ -1244,6 +1605,20 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Wait for the database to emit `update` events, collecting the whole initial
+   * burst.
+   *
+   * Polls (100 ms) until the first `update` arrives or `timeoutMs` elapses,
+   * then keeps collecting for as long as further updates keep arriving within
+   * 300 ms of the last one (so a multi-entry replication burst is captured as a
+   * unit). Returns immediately if the database has no event emitter, and stops
+   * early on shutdown.
+   *
+   * @param db - The database to observe.
+   * @param timeoutMs - Overall wait budget in ms (default 5000).
+   * @returns Whether any update was received and the collected update entries.
+   */
   private async waitForUpdateEvent(
     db: any,
     timeoutMs = 5000,
@@ -1286,6 +1661,18 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Normalize a manifest `accessController` address to an openable `/orbitdb/`
+   * database address, or null when it is not an OrbitDB-backed controller.
+   *
+   * A `/orbitdb-deferred/<hash>` controller address refers to the same
+   * underlying OrbitDB keyvalue store as `/orbitdb/<hash>`, so it is rewritten
+   * to the `/orbitdb/` form the relay can open. Plain `/orbitdb/` addresses are
+   * returned unchanged; anything else (e.g. an `/ipfs/` controller) yields null.
+   *
+   * @param address - The manifest access-controller address (may be null).
+   * @returns The openable `/orbitdb/` address, or null.
+   */
   private normalizeOrbitdbAccessAddress(address: string | null): string | null {
     if (!address || typeof address !== "string") return null;
     if (address.startsWith(DEFERRED_ACL_PREFIX)) {
@@ -1294,6 +1681,13 @@ export class DatabaseService {
     return address.startsWith(ORBITDB_PREFIX) ? address : null;
   }
 
+  /**
+   * Add a database address to the known-databases set (used to advertise the
+   * on-demand heads protocol and to reopen on demand). Ignores anything that is
+   * not an `/orbitdb/` address.
+   *
+   * @param dbAddress - Candidate address to remember.
+   */
   private rememberKnownDatabaseAddress(
     dbAddress: string | null | undefined,
   ): void {
@@ -1307,6 +1701,17 @@ export class DatabaseService {
     this.knownDatabasesByAddress.add(dbAddress);
   }
 
+  /**
+   * Walk records (up to depth 4 through arrays and objects) and remember every
+   * `/orbitdb/` address string found anywhere inside them.
+   *
+   * Todo records can embed references to other databases (e.g. per-list or
+   * ACL addresses); discovering them lets the relay advertise their heads
+   * protocols and reopen them on demand.
+   *
+   * @param records - Records to scan; each may be a raw value or a `{ value }`
+   * wrapper.
+   */
   private rememberKnownDatabaseAddressesFromRecords(records: any[]): void {
     const visit = (value: unknown, depth = 0) => {
       if (depth > 4 || value == null) return;
@@ -1333,6 +1738,14 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Parse the OrbitDB database address out of an on-demand heads protocol id.
+   * Inverse of the mapping in {@link DatabaseService.getKnownHeadsProtocols}.
+   *
+   * @param protocol - A protocol id such as `/orbitdb/heads/orbitdb/<hash>`.
+   * @returns The embedded `/orbitdb/<hash>` address, or null when the protocol
+   * is not a well-formed heads protocol.
+   */
   private dbAddressFromHeadsProtocol(protocol: string): string | null {
     if (
       typeof protocol !== "string" ||
@@ -1343,6 +1756,22 @@ export class DatabaseService {
     return dbAddress.startsWith(ORBITDB_PREFIX) ? dbAddress : null;
   }
 
+  /**
+   * Poll for OrbitDB's own handler registration for a heads protocol.
+   *
+   * When the relay reopens a database to serve an on-demand heads request,
+   * OrbitDB registers the protocol handler asynchronously during open. This
+   * retries the provided lookup every 50 ms until it returns a handler or the
+   * timeout elapses, then rethrows the last lookup error.
+   *
+   * @param protocol - The heads protocol id whose handler is awaited.
+   * @param getRegisteredHandler - Lookup that returns the handler or throws
+   * until it exists.
+   * @param timeoutMs - Wait budget (default {@link ON_DEMAND_HEADS_HANDLER_TIMEOUT_MS}).
+   * @returns The registered handler record.
+   * @throws The last lookup error (or a timeout error) if none registers in
+   * time.
+   */
   private async waitForRegisteredHeadsHandler(
     protocol: string,
     getRegisteredHandler: (protocol: string) => any,
@@ -1363,6 +1792,16 @@ export class DatabaseService {
     throw lastError ?? new Error(`Timed out waiting for handler ${protocol}`);
   }
 
+  /**
+   * Ensure there is a live libp2p connection back to a peer before serving its
+   * on-demand heads request.
+   *
+   * If an open connection already exists it does nothing; otherwise it attempts
+   * a best-effort dial. Never throws — dial failures are logged so the heads
+   * exchange can still be attempted over whatever connection libp2p has.
+   *
+   * @param remotePeer - The peer to (re)connect to; null/undefined is a no-op.
+   */
   private async ensurePeerConnection(remotePeer: unknown): Promise<void> {
     if (remotePeer == null) return;
 
@@ -1402,6 +1841,15 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Reduce a decoded OrbitDB manifest to the fields worth logging (name, type,
+   * access-controller address, meta) alongside the address and manifest CID.
+   *
+   * @param manifest - The decoded manifest value (may be null-ish).
+   * @param dbAddress - The database address the manifest belongs to.
+   * @param cid - The manifest block CID string.
+   * @returns A small plain object for logging.
+   */
   private summarizeManifest(manifest: any, dbAddress: string, cid: string) {
     return {
       dbAddress,
@@ -1413,6 +1861,22 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Load and decode an OrbitDB database manifest directly from the blockstore,
+   * without opening the database.
+   *
+   * Parses the address, fetches the manifest block by CID (with a timeout so a
+   * missing block cannot hang sync), and DAG-CBOR-decodes it. As a side effect
+   * it caches the manifest `name` in {@link DatabaseService.orbitDbNameByAddress}
+   * for later log lines. Used by sync to learn the name and access-controller
+   * address up front. Fault-tolerant: returns null (and warns when database
+   * logging is on) rather than throwing.
+   *
+   * @param dbAddress - The database address whose manifest to load.
+   * @param options - `quiet` suppresses the manifest sync-log line (used by the
+   * logging prefetch path).
+   * @returns The decoded manifest object, or null on any failure.
+   */
   private async loadManifest(
     dbAddress: string,
     options?: { quiet?: boolean },
@@ -1460,6 +1924,21 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Wait for the first sign of replication life on a database — either a peer
+   * `join` or an `update` — used when pre-opening an access-controller DB so
+   * writer permissions are populated before the main sync.
+   *
+   * Polls (100 ms) until activity is seen or the timeout elapses; `update`
+   * takes precedence over `join` in the reported `activity`. Returns
+   * immediately when the database has no event emitter, and stops early on
+   * shutdown.
+   *
+   * @param db - The database to observe.
+   * @param timeoutMs - Wait budget in ms (default 5000).
+   * @returns Whether activity was seen and which kind (first `join`, upgraded
+   * to `update` if one arrives).
+   */
   private async waitForDatabaseActivity(
     db: any,
     timeoutMs = 5000,
@@ -1504,6 +1983,19 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Poll a database's log until it has at least one head (i.e. its oplog is
+   * non-empty), or the timeout elapses.
+   *
+   * Used when pre-opening an access-controller database: the relay needs the
+   * ACL's heads present before it can verify writer permissions, otherwise
+   * legitimate appends would be rejected. Errors while reading heads are
+   * ignored between polls (250 ms).
+   *
+   * @param db - The database whose heads to await.
+   * @param timeoutMs - Wait budget in ms (default 20000).
+   * @returns Whether heads appeared, how many, and their hashes.
+   */
   private async waitForDatabaseHeads(
     db: any,
     timeoutMs = 20000,
@@ -1541,6 +2033,24 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Open the database's access-controller database *before* the main database
+   * sync and wait for it to become usable.
+   *
+   * Access control for the todo app depends on entries stored in a separate
+   * OrbitDB access-controller database. If the main database syncs before the
+   * ACL has replicated its heads, the relay's `canAppend` checks reject
+   * legitimate writers. This opens the ACL DB (retained), installs debug hooks,
+   * then waits for both replication activity and non-empty heads (logging each
+   * outcome) so permission checks during sync see current data.
+   *
+   * @param dbAddress - The main database whose access controller to pre-open.
+   * @param options - `manifest` reuses an already-loaded manifest (otherwise it
+   * is loaded); `timeoutMs` bounds the activity/heads waits (default 20000).
+   * @returns The retained access-controller database, or null when the
+   * database has no OrbitDB-backed access controller. Caller is responsible for
+   * releasing it (see the sync `finally` block).
+   */
   private async preOpenAccessController(
     dbAddress: string,
     options?: { manifest?: any | null; timeoutMs?: number },
@@ -1641,6 +2151,19 @@ export class DatabaseService {
     return aclDb;
   }
 
+  /**
+   * Open a database via OrbitDB, de-duplicating concurrent opens of the same
+   * address.
+   *
+   * Opening the same LevelDB-backed database twice concurrently can corrupt or
+   * error, so an in-flight open is shared: callers arriving while an open is
+   * pending await the same promise (logging differently once the pending open
+   * passes a staleness threshold). On completion it installs non-fatal error
+   * handlers and clears the in-flight record.
+   *
+   * @param dbAddress - The address to open.
+   * @returns The opened OrbitDB database instance.
+   */
   private async openDatabase(dbAddress: string): Promise<any> {
     const existing = this.openInFlight.get(dbAddress);
     if (existing) {
@@ -1670,6 +2193,14 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Wait for an in-flight sync to finish, but give up after `timeoutMs` so a
+   * coalesced caller returns promptly with the pinned record rather than
+   * blocking on a slow sync.
+   *
+   * @param promise - The in-flight sync's completion promise.
+   * @param timeoutMs - Maximum time to wait before returning anyway.
+   */
   private async waitForCoalescedInFlight(
     promise: Promise<void>,
     timeoutMs: number,
@@ -1677,6 +2208,18 @@ export class DatabaseService {
     await Promise.race([promise, delay(timeoutMs)]);
   }
 
+  /**
+   * Race a promise against a timeout, rejecting with a labeled error if the
+   * promise does not settle in time. The timer is always cleared so it cannot
+   * keep the event loop alive after the race resolves.
+   *
+   * @typeParam T - The promise's resolved type.
+   * @param promise - The operation to bound.
+   * @param timeoutMs - Timeout in ms.
+   * @param label - Human-readable label included in the timeout error message.
+   * @returns The promise's resolved value.
+   * @throws An `Error` (`"<label> timed out after <ms>ms"`) if the timeout wins.
+   */
   private async withTimeout<T>(
     promise: Promise<T>,
     timeoutMs: number,
@@ -1698,6 +2241,18 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Open a database and increment its reference (use) count.
+   *
+   * The relay opens the same database from several overlapping code paths
+   * (main sync, ACL pre-open, on-demand heads). Reference counting via
+   * {@link DatabaseService.databaseUseCounts} lets the last releaser close it
+   * exactly once. Every `retainOpenDatabase` must be balanced by a
+   * {@link DatabaseService.releaseOpenDatabase}.
+   *
+   * @param dbAddress - The address to open and retain.
+   * @returns The opened database instance.
+   */
   private async retainOpenDatabase(dbAddress: string): Promise<any> {
     const db = await this.openDatabase(dbAddress);
     this.databaseUseCounts.set(
@@ -1707,6 +2262,18 @@ export class DatabaseService {
     return db;
   }
 
+  /**
+   * Decrement a database's reference count and close it once the last holder
+   * releases it. Counterpart to {@link DatabaseService.retainOpenDatabase}.
+   *
+   * When the count drops to zero the database is closed silently; otherwise the
+   * count is just decremented (another holder still needs it). Databases the
+   * relay decides to keep open for replication are tracked separately in
+   * {@link DatabaseService.pinnedOpenDatabases} and are not released here.
+   *
+   * @param dbAddress - The address being released.
+   * @param db - The database instance to close if this was the last reference.
+   */
   private async releaseOpenDatabase(dbAddress: string, db: any): Promise<void> {
     const current = this.databaseUseCounts.get(dbAddress) ?? 0;
     if (current <= 1) {
@@ -1770,6 +2337,14 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Close a database, swallowing any close error.
+   *
+   * Closing is best-effort during release/shutdown; a failed close must never
+   * propagate and abort the surrounding cleanup.
+   *
+   * @param db - The database to close (null/undefined is a no-op).
+   */
   private async closeDatabaseSilently(db: any): Promise<void> {
     try {
       await db?.close?.();
@@ -1778,6 +2353,18 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Attach `error` listeners to a database's event emitters so OrbitDB's
+   * non-fatal errors are logged instead of surfacing as unhandled
+   * EventEmitter errors (which would crash the process).
+   *
+   * Hooks both `db.events` and, when distinct, `db.sync.events`. Uses a symbol
+   * marker ({@link RELAY_ERROR_HANDLER_INSTALLED}) so re-opening the same
+   * emitter does not stack duplicate handlers.
+   *
+   * @param db - The opened database instance.
+   * @param dbAddress - The address, included in each logged error payload.
+   */
   private installNonFatalDatabaseErrorHandlers(db: any, dbAddress: string) {
     const attach = (emitter: any, source: string) => {
       if (!emitter?.on) return;
@@ -1807,6 +2394,22 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Wrap a database's access controller `canAppend` to log *why* an append was
+   * rejected — only when sync logging is enabled.
+   *
+   * Diagnosing "the relay silently dropped my write" is hard without knowing
+   * which permission check failed. This wrapper leaves the allow/deny decision
+   * untouched (it returns exactly what the original `canAppend` returns) but,
+   * on a rejection, logs the writer identity/key, the payload op/key, decoded
+   * delegation-action fields, and identity-verification debug from
+   * {@link DatabaseService.collectDatabaseIdentityDebug}. Guarded by a
+   * `__debugCanAppendWrapped` flag so it is installed at most once per access
+   * controller. Failures to install are logged and swallowed.
+   *
+   * @param db - The opened database whose access controller to instrument.
+   * @param dbAddress - The address, included in the debug logs.
+   */
   private installAccessControllerDebugHooks(db: any, dbAddress: string) {
     if (!loggingConfig.enableSyncLogs) return;
     try {
@@ -1870,6 +2473,21 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Resolve an identity by its hash and report how it verifies, for
+   * append-rejection diagnostics.
+   *
+   * Looks the identity up in OrbitDB's identities store and records both the
+   * base `verifyIdentity` result (and any error) and the relay's
+   * fallback-verifier result, so mismatches between the two — the usual cause
+   * of rejected writes across mixed identity modes — are visible. For
+   * `worker-ed25519` identities it also attaches extra worker debug. Never
+   * throws: all failures are folded into the returned object.
+   *
+   * @param hash - The identity hash to inspect (null/undefined yields null).
+   * @returns A debug object describing the identity and its verification, or
+   * null when no hash was given.
+   */
   private async inspectIdentityHash(hash: string | null | undefined) {
     if (!hash) return null;
     try {
@@ -1927,6 +2545,20 @@ export class DatabaseService {
     }
   }
 
+  /**
+   * Collect up to `limit` distinct writer identity hashes from a database's
+   * oplog and inspect each via {@link DatabaseService.inspectIdentityHash}.
+   *
+   * Used by append-rejection diagnostics to show which writers appear in a
+   * database (or its ACL) and whether their identities verify. Fault-tolerant:
+   * an iteration error is captured into the returned object.
+   *
+   * @param db - The database whose log to walk.
+   * @param label - A label (e.g. `"db-log"`/`"acl-log"`) identifying this set.
+   * @param limit - Maximum distinct identities to inspect (default 20).
+   * @returns An object with the label and the inspected identities (or an
+   * error).
+   */
   private async collectIdentityHashesFromLog(
     db: any,
     label: string,
@@ -1958,6 +2590,15 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Capture a small, log-safe snapshot of a database's live state: address,
+   * name, access-controller type, head count/hashes and connected-peer count.
+   * Reads that fail are ignored so the snapshot never throws.
+   *
+   * @param db - The database to snapshot.
+   * @param label - A label identifying the call site in logs.
+   * @returns A plain object describing the current state.
+   */
   private async snapshotDatabaseState(db: any, label: string) {
     let headHashes: string[] = [];
     let headCount = 0;
@@ -1986,6 +2627,20 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Assemble the full identity/state debug bundle logged when the relay's
+   * access controller rejects an append.
+   *
+   * Combines the rejected writer's identity inspection, a snapshot of the
+   * database state and its log identities, and — when the access controller
+   * exposes a `debugDb` — the same for the ACL database, so a rejected write
+   * can be traced to a specific identity/verification mismatch.
+   *
+   * @param db - The database that rejected the append.
+   * @param writerIdentityHash - The rejected entry's writer identity hash.
+   * @returns A composite debug object (writer, db state, per-log identities and
+   * optional ACL state).
+   */
   private async collectDatabaseIdentityDebug(
     db: any,
     writerIdentityHash: string | null,
@@ -2009,15 +2664,35 @@ export class DatabaseService {
     };
   }
 
+  /**
+   * Fire-and-forget sync of one database address (the public entry point used
+   * by pubsub-triggered replication). Thin wrapper over
+   * {@link DatabaseService.syncAllOrbitDBRecordsWithResult} that discards the
+   * structured result; no-op while shutting down.
+   *
+   * @param dbAddress - The database address to sync.
+   */
   async syncAllOrbitDBRecords(dbAddress: string) {
     if (this.isShuttingDown) return;
     await this.syncAllOrbitDBRecordsWithResult(dbAddress);
   }
 
+  /**
+   * Flip the shutdown flag so in-progress waits/loops
+   * ({@link DatabaseService.waitForUpdateEvent}, sync passes, pin enqueue, …)
+   * bail out early. Idempotent and cheap; call before {@link DatabaseService.stop}
+   * or as an early shutdown signal.
+   */
   beginShutdown() {
     this.isShuttingDown = true;
   }
 
+  /**
+   * Gracefully shut the service down: signal shutdown, drain and clear the
+   * media pin queue, drop the maps of open/pinned databases and their use
+   * counts, and stop the OrbitDB instance (swallowing any stop error). After
+   * this the service must not be reused.
+   */
   async stop() {
     this.beginShutdown();
 
