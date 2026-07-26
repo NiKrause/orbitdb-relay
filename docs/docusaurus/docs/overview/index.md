@@ -41,13 +41,19 @@ You reach for `orbitdb-relay` when the "everyone is a peer" model breaks down in
 
 ## What it is not
 
-- **Not a replacement for OrbitDB replication.** OrbitDB still owns `/orbitdb/heads/*`, oplog
-  merges, identities, signatures, and access control. The relay is an extra, well-behaved peer —
-  see [Peer recovery](../concepts/peer-recovery.md) and the safety boundaries it respects.
-- **Not a central database.** Its in-memory peer directory stores *no* application entries,
-  identities, heads, or values. It is discovery metadata that is lost on restart.
-- **Not an authenticated gateway by default.** `/ipfs/<cid>` is unauthenticated in the default
-  relay. Expose the HTTP port only on trusted networks or put an authenticating proxy in front.
+- **Not a reimplementation of OrbitDB replication.** The relay *does* replicate — but it does so
+  as an ordinary OrbitDB peer, using OrbitDB's own protocol. Heads exchange, oplog merges,
+  identities, signatures and access control all stay with OrbitDB; the relay adds availability,
+  not a second replication mechanism. See [Peer recovery](../concepts/peer-recovery.md) for the
+  boundaries it respects.
+- **Not a central database.** The peer directory holds discovery metadata only — no application
+  entries — and is lost on restart.
+- **Not an authenticated gateway, and not pinned-only by default.** `/ipfs/<cid>` is
+  unauthenticated, and the default `fallbackMode` is `pinned-first-network-fallback`: content the
+  relay has not pinned is fetched from the public IPFS network and served. Anyone who can reach
+  the HTTP port can therefore pull *arbitrary* CIDs through the relay. Restrict it to trusted
+  networks, put an authenticating proxy in front, or run the library with
+  `pinningHttp.fallbackMode: 'pinned-only'` so it serves only what it has pinned.
 
 ## How it fits in a local-first stack
 
