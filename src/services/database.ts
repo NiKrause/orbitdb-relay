@@ -320,6 +320,10 @@ export class DatabaseService {
    * edge-triggered heads exchange. Ignores non-`/orbitdb/` addresses and peers
    * that stringify to nothing useful (`""` / `[object Object]`).
    *
+   * Entries are removed again by {@link DatabaseService.reconnectKnownDatabasePeers}
+   * as soon as a peer fails to dial, so the directory reflects who is still
+   * reachable rather than everyone who ever subscribed.
+   *
    * @param dbAddress - The OrbitDB database address the peer subscribed to.
    * @param peer - The peer id (or object with `toString()`); stored as-is for
    * later dialing.
@@ -356,6 +360,8 @@ export class DatabaseService {
     const libp2p = (this.ipfs as any)?.libp2p;
     if (!peers?.size || !libp2p) return;
 
+    // Unreachable entries are pruned below as they fail, so the directory
+    // self-cleans on every open instead of needing a sweep of its own.
     await Promise.allSettled(
       Array.from(peers.entries(), async ([peerId, peer]) => {
         if (peerId === libp2p.peerId?.toString?.()) return;
@@ -370,9 +376,19 @@ export class DatabaseService {
             peerId,
           });
         } catch (error: any) {
-          syncLog("Failed to reconnect known OrbitDB subscriber:", {
+          // Forget it. A subscriber we cannot dial is by definition no longer
+          // reachable, and keeping it costs a dial timeout on every later open
+          // of this database. The directory only ever grew before, so a browser
+          // that closed its tab was re-dialed for the lifetime of the process.
+          //
+          // Being wrong here is cheap: a peer evicted after a transient failure
+          // re-registers on its next `subscription-change` — the same event that
+          // put it here to begin with.
+          peers.delete(peerId);
+          syncLog("Forgot unreachable OrbitDB subscriber:", {
             dbAddress,
             peerId,
+            remaining: peers.size,
             error: error?.message || String(error),
           });
         }
