@@ -67,7 +67,7 @@
     "@helia/unixfs": "^8.0.4",
     "@ipld/dag-cbor": "^10.0.1",
     "@ipld/dag-json": "^11.0.0",
-    "@ipshipyard/libp2p-auto-tls": "^1.0.0",
+    "@ipshipyard/libp2p-auto-tls": "^2.0.2",
     "@le-space/orbitdb-access-controller-delegated-todo": "^0.1.0",
     "@le-space/orbitdb-identity-provider-webauthn-did": "^0.3.1",
     "@libp2p/autonat": "^3.0.24",
