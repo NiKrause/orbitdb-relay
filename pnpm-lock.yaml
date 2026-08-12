@@ -70,6 +70,9 @@ importers:
       '@libp2p/gossipsub':
         specifier: 16.1.0
         version: 16.1.0
+      '@libp2p/http':
+        specifier: ^2.0.6
+        version: 2.0.6
       '@libp2p/identify':
         specifier: ^4.1.10
         version: 4.1.10
@@ -4757,7 +4760,7 @@ snapshots:
     dependencies:
       '@libp2p/crypto': 5.1.21
       '@libp2p/interface': 3.2.5
-      '@libp2p/peer-id': 6.0.12
+      '@libp2p/peer-id': 6.0.13
       uint8-varint: 3.0.0
       uint8arrays: 6.1.1
 
@@ -4765,8 +4768,8 @@ snapshots:
     dependencies:
       '@achingbrain/http-parser-js': 0.5.9
       '@libp2p/interface': 3.2.5
-      '@libp2p/peer-id': 6.0.12
-      '@libp2p/utils': 7.3.0
+      '@libp2p/peer-id': 6.0.13
+      '@libp2p/utils': 7.3.1
       '@multiformats/multiaddr': 13.0.3
       '@multiformats/multiaddr-to-uri': 12.0.0
       '@multiformats/uri-to-multiaddr': 10.0.0
@@ -4782,8 +4785,8 @@ snapshots:
       '@achingbrain/http-parser-js': 0.5.9
       '@libp2p/http-utils': 2.0.6
       '@libp2p/interface': 3.2.5
-      '@libp2p/interface-internal': 3.1.9
-      '@libp2p/utils': 7.3.0
+      '@libp2p/interface-internal': 3.1.10
+      '@libp2p/utils': 7.3.1
       '@multiformats/multiaddr': 13.0.3
       multiformats: 14.0.3
       race-event: 1.6.1
@@ -4797,7 +4800,7 @@ snapshots:
       '@libp2p/http-utils': 2.0.6
       '@libp2p/http-websocket': 2.0.4
       '@libp2p/interface': 3.2.5
-      '@libp2p/interface-internal': 3.1.9
+      '@libp2p/interface-internal': 3.1.10
       '@multiformats/multiaddr': 13.0.3
       cookie: 1.1.1
       undici: 8.5.0

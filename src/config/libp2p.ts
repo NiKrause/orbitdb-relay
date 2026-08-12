@@ -14,6 +14,7 @@ import { ping } from '@libp2p/ping'
 import { autoNAT } from '@libp2p/autonat'
 import { dcutr } from '@libp2p/dcutr'
 import { autoTLS } from '@ipshipyard/libp2p-auto-tls'
+import { http } from '@libp2p/http'
 import { keychain } from '@libp2p/keychain'
 import { prometheusMetrics } from '@libp2p/prometheus-metrics'
 import type { PrivateKey } from '@libp2p/interface'
@@ -182,6 +183,13 @@ export const createLibp2pConfig = (
         },
       }),
       ...(!process.env.disableAutoTLS && {
+        // AutoTLS 2.x talks to registration.libp2p.direct through the libp2p
+        // `http` service - `this.components.http.fetch(...)` - and fails with
+        // `MissingServiceError: http not set` when nothing registers it. 1.x did
+        // not need this, and the change is not called out in its release notes:
+        // the certificate simply never arrives, on a node whose addresses and
+        // CSR are both fine.
+        http: http(),
         autoTLS: autoTLS({
           autoConfirmAddress: true,
           ...(process.env.STAGING === 'true' && {

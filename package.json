@@ -76,6 +76,7 @@
     "@libp2p/crypto": "^5.1.21",
     "@libp2p/dcutr": "^3.0.24",
     "@libp2p/gossipsub": "^16.1.0",
+    "@libp2p/http": "^2.0.6",
     "@libp2p/identify": "^4.1.10",
     "@libp2p/interface": "^3.2.5",
     "@libp2p/kad-dht": "^16.4.0",
