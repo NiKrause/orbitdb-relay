@@ -115,7 +115,9 @@
       "it-length-prefixed": "9.1.1",
       "it-length-prefixed-stream": "2.0.6",
       "it-byte-stream": "2.0.6",
-      "@libp2p/gossipsub": "16.1.0"
+      "@libp2p/gossipsub": "16.1.0",
+      "@peculiar/asn1-schema": "2.8.0",
+      "@peculiar/asn1-x509": "2.8.0"
     },
     "peerDependencyRules": {
       "allowedVersions": {
