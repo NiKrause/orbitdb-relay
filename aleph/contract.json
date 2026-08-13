@@ -45,6 +45,12 @@
       "purpose": "libp2p TCP"
     },
     {
+      "port": 9092,
+      "tcp": true,
+      "udp": false,
+      "purpose": "libp2p WebSocket and AutoTLS"
+    },
+    {
       "port": 443,
       "tcp": true,
       "udp": false,
