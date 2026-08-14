@@ -36,6 +36,27 @@ export type PinningSyncResult = {
   coalesced?: boolean
 }
 
+/**
+ * Result of {@link PinningHttpHandlers.hasEntry} for POST `/pinning/has-entry`.
+ *
+ * `hasEntry` is deliberately three-valued. `false` means the relay scanned its
+ * local snapshot and the entry was not in it; `null` means the relay could not
+ * answer — the database is not open, or it exposes neither `all()` nor
+ * `iterator()`. Callers must not read `null` as "not replicated": the whole
+ * point of this endpoint is that "I don't know" and "I don't have it" are
+ * different answers, and `/pinning/sync` could express only the second.
+ */
+export type PinningHasEntryResult = {
+  ok: boolean
+  error?: string
+  /** True/false when the snapshot could be scanned, null when it could not. */
+  hasEntry: boolean | null
+  /** Rows/entries scanned, or null when no scan was possible. */
+  entryCount?: number | null
+  /** How the answer was produced, e.g. `db.all()`, `iterator`, `database-not-open`. */
+  source?: string
+}
+
 /** Result of {@link PinningHttpHandlers.streamPinnedCid} for GET `/ipfs/...`. */
 export type StreamPinnedCidResult =
   | { ok: true; contentType?: string; chunks: AsyncIterable<Uint8Array> }
@@ -46,6 +67,14 @@ export type PinningHttpHandlers = {
   /** When `address` is set, returns at most one entry (relay sync history only). */
   getDatabases: (opts?: { address?: string }) => { databases: Array<Record<string, unknown>>; total: number }
   syncDatabase: (dbAddress: string) => Promise<PinningSyncResult>
+  /**
+   * Answer whether one exact OrbitDB entry hash is in the relay's local
+   * snapshot of a database.
+   *
+   * Optional so a host embedding an older handler set still type-checks; the
+   * HTTP layer replies 501 when it is absent.
+   */
+  hasEntry?: (dbAddress: string, entryHash: string) => Promise<PinningHasEntryResult>
   /**
    * Stream bytes for a CID only if it is pinned in Helia and only from local storage
    * (`offline` / no network fetch). Optional `pathWithin` is a UnixFS path inside a directory CID.

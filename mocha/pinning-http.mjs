@@ -127,4 +127,93 @@ describe('PinningHttp request handler', function () {
       await helia.stop()
     }
   })
+  it('answers entry membership over /pinning/has-entry, keeping "unknown" distinct from "no"', async () => {
+    const calls = []
+    const handler = exports.createPinningHttpRequestHandler({
+      pinning: {
+        getStats: () => ({ ok: true }),
+        getDatabases: () => ({ databases: [], total: 0 }),
+        syncDatabase: async () => ({ ok: true, extractedMediaCids: [] }),
+        hasEntry: async (dbAddress, entryHash) => {
+          calls.push({ dbAddress, entryHash })
+          if (entryHash === 'zdpuKnown') return { ok: true, hasEntry: true, entryCount: 3, source: 'db.all()' }
+          if (entryHash === 'zdpuMissing') return { ok: true, hasEntry: false, entryCount: 3, source: 'db.all()' }
+          return { ok: true, hasEntry: null, entryCount: null, source: 'database-not-open' }
+        },
+      },
+    })
+    const server = http.createServer(handler)
+    const addr = await listen(server)
+    const base = `http://127.0.0.1:${addr.port}`
+    const ask = (body) =>
+      fetch(`${base}/pinning/has-entry`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+
+    try {
+      const found = await ask({ dbAddress: '/orbitdb/x', entryHash: 'zdpuKnown' })
+      assert.equal(found.status, 200)
+      assert.deepEqual(await found.json(), {
+        ok: true,
+        dbAddress: '/orbitdb/x',
+        entryHash: 'zdpuKnown',
+        hasEntry: true,
+        entryCount: 3,
+        source: 'db.all()',
+      })
+
+      // A scanned miss is a real "no" and must not be confused with the
+      // unscannable case below — the client retries on one and gives up on
+      // neither, but it may only ever show a red state for this one.
+      const missing = await ask({ dbAddress: '/orbitdb/x', entryHash: 'zdpuMissing' })
+      assert.equal((await missing.json()).hasEntry, false)
+
+      const unknown = await ask({ dbAddress: '/orbitdb/x', entryHash: 'zdpuOther' })
+      const unknownBody = await unknown.json()
+      assert.equal(unknownBody.hasEntry, null)
+      assert.equal(unknownBody.source, 'database-not-open')
+
+      assert.equal(calls.length, 3)
+
+      const noHash = await ask({ dbAddress: '/orbitdb/x' })
+      assert.equal(noHash.status, 400)
+      assert.equal((await noHash.json()).code, 'missing_entry_hash')
+
+      const noAddress = await ask({ entryHash: 'zdpuKnown' })
+      assert.equal(noAddress.status, 400)
+      assert.equal((await noAddress.json()).code, 'missing_db_address')
+    } finally {
+      await close(server)
+    }
+  })
+
+  it('reports 501 rather than 404 when the relay predates entry membership', async () => {
+    const handler = exports.createPinningHttpRequestHandler({
+      pinning: {
+        getStats: () => ({ ok: true }),
+        getDatabases: () => ({ databases: [], total: 0 }),
+        syncDatabase: async () => ({ ok: true, extractedMediaCids: [] }),
+        // hasEntry deliberately absent: the handler type keeps it optional so an
+        // older embedder still compiles, and the client needs to tell "this
+        // relay cannot answer" apart from "wrong URL" to pick its fallback.
+      },
+    })
+    const server = http.createServer(handler)
+    const addr = await listen(server)
+    const base = `http://127.0.0.1:${addr.port}`
+
+    try {
+      const res = await fetch(`${base}/pinning/has-entry`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ dbAddress: '/orbitdb/x', entryHash: 'zdpuKnown' }),
+      })
+      assert.equal(res.status, 501)
+      assert.equal((await res.json()).code, 'not_implemented')
+    } finally {
+      await close(server)
+    }
+  })
 })
