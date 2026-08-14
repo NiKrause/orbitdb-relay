@@ -37,6 +37,8 @@ export type JsonErrorCode =
   | 'bad_request'
   | 'invalid_json'
   | 'missing_db_address'
+  | 'missing_entry_hash'
+  | 'not_implemented'
   | 'database_not_found'
   | 'sync_failed'
   | 'invalid_cid'
@@ -291,6 +293,7 @@ export function isManagedPinningHttpPath(pathname: string): boolean {
     pathname === '/pinning/stats' ||
     pathname === '/pinning/databases' ||
     pathname === '/pinning/sync' ||
+    pathname === '/pinning/has-entry' ||
     pathname.startsWith('/ipfs/')
   )
 }
@@ -430,6 +433,50 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
           lastRecord: result.lastRecord ?? null,
           snapshotSource: result.snapshotSource ?? null,
           ...(result.coalesced ? { coalesced: true } : {}),
+        })
+      } catch (error: any) {
+        const code = error?.code === 'invalid_json' ? 'invalid_json' : 'bad_request'
+        sendError(res, 400, code, error?.message || String(error))
+      }
+      return
+    }
+
+    if (pinning && pathname === '/pinning/has-entry' && req.method === 'POST') {
+      try {
+        const body = (await readJsonBody(req)) as { dbAddress?: string; entryHash?: string }
+        const dbAddress =
+          (typeof body?.dbAddress === 'string' ? body.dbAddress.trim() : '') ||
+          firstSearchParam(req.url, ['dbAddress', 'address'])
+        if (!dbAddress) {
+          sendError(res, 400, 'missing_db_address', 'Missing or invalid dbAddress')
+          return
+        }
+        const entryHash =
+          (typeof body?.entryHash === 'string' ? body.entryHash.trim() : '') ||
+          firstSearchParam(req.url, ['entryHash', 'hash'])
+        if (!entryHash) {
+          sendError(res, 400, 'missing_entry_hash', 'Missing or invalid entryHash')
+          return
+        }
+        // A relay built before this route exists still satisfies the handler
+        // type (hasEntry is optional), so say so explicitly instead of throwing
+        // — the client uses this to fall back to the older lastRecord check.
+        if (typeof pinning.hasEntry !== 'function') {
+          sendError(res, 501, 'not_implemented', 'This relay cannot answer entry membership')
+          return
+        }
+        const result = await pinning.hasEntry(dbAddress, entryHash)
+        if (!result.ok) {
+          sendError(res, 500, 'sync_failed', result.error || 'entry lookup failed')
+          return
+        }
+        sendJson(res, 200, {
+          ok: true,
+          dbAddress,
+          entryHash,
+          hasEntry: result.hasEntry ?? null,
+          entryCount: result.entryCount ?? null,
+          source: result.source ?? null,
         })
       } catch (error: any) {
         const code = error?.code === 'invalid_json' ? 'invalid_json' : 'bad_request'

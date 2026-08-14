@@ -95,6 +95,7 @@ import PQueue from "p-queue";
 
 import {
   MetricsServer,
+  type PinningHasEntryResult,
   type PinningHttpHandlers,
   type StreamPinnedCidResult,
 } from "./metrics.js";
@@ -562,8 +563,110 @@ export class DatabaseService {
           return { ok: false, error: e?.message || String(e) };
         }
       },
+      hasEntry: (dbAddress: string, entryHash: string) =>
+        this.hasLocalOrbitDBEntry(dbAddress, entryHash),
       streamPinnedCid: (cidStr: string, pathWithin?: string) =>
         this.streamPinnedIpfsContent(cidStr, pathWithin),
+    };
+  }
+
+  /**
+   * POST `/pinning/has-entry` — is this exact OrbitDB entry hash in the relay's
+   * local snapshot of `dbAddress`?
+   *
+   * `/pinning/sync` already reports a snapshot, but only its *last* record, so a
+   * caller asking "did you replicate entry X" could only compare against
+   * `lastRecord.hash`. That answers a narrower question — "is X the newest entry
+   * you hold" — and goes permanently false for X the moment any later entry
+   * arrives. A client watching several entries could therefore never prove the
+   * earlier ones, no matter how long it waited.
+   *
+   * Read-only and outside the sync path on purpose: it scans the already-open
+   * database rather than forcing a sync, so it cannot disturb coalescing,
+   * in-flight dedup, or the pinned-record bookkeeping.
+   *
+   * @param dbAddress - OrbitDB address to look in.
+   * @param entryHash - Exact entry hash to look for.
+   * @returns `hasEntry` true/false when a scan was possible, null when it was
+   * not — see {@link PinningHasEntryResult} on why those are not the same.
+   */
+  private async hasLocalOrbitDBEntry(
+    dbAddress: string,
+    entryHash: string,
+  ): Promise<PinningHasEntryResult> {
+    const db = this.pinnedOpenDatabases.get(dbAddress);
+    if (!db) {
+      return {
+        ok: true,
+        hasEntry: null,
+        entryCount: null,
+        source: "database-not-open",
+      };
+    }
+
+    const matches = (row: any): boolean =>
+      row != null && typeof row === "object" && row.hash === entryHash;
+
+    if (typeof db.all === "function") {
+      try {
+        const all = await db.all();
+        const rows = Array.isArray(all) ? all : [];
+        return {
+          ok: true,
+          hasEntry: rows.some(matches),
+          entryCount: rows.length,
+          source: "db.all()",
+        };
+      } catch (e: any) {
+        return {
+          ok: false,
+          hasEntry: null,
+          entryCount: null,
+          error: e?.message || String(e),
+          source: `db.all() error`,
+        };
+      }
+    }
+
+    if (typeof db.iterator === "function") {
+      try {
+        let count = 0;
+        for await (const entry of db.iterator()) {
+          count++;
+          if (matches(entry)) {
+            return {
+              ok: true,
+              hasEntry: true,
+              entryCount: count,
+              source: "iterator",
+            };
+          }
+          if (count >= 100_000) break;
+        }
+        return {
+          ok: true,
+          // A truncated walk that found nothing has not proven absence, so the
+          // answer stays unknown rather than becoming a false negative.
+          hasEntry: count >= 100_000 ? null : false,
+          entryCount: count,
+          source: count >= 100_000 ? "iterator (stopped at 100k)" : "iterator",
+        };
+      } catch (e: any) {
+        return {
+          ok: false,
+          hasEntry: null,
+          entryCount: null,
+          error: e?.message || String(e),
+          source: "iterator error",
+        };
+      }
+    }
+
+    return {
+      ok: true,
+      hasEntry: null,
+      entryCount: null,
+      source: "database exposes neither all() nor iterator()",
     };
   }
 
