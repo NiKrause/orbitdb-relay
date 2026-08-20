@@ -186,6 +186,7 @@ See **`.env.example`** for a full list including **circuit relay v2** tuning (`R
 - `DATASTORE_PATH` or `RELAY_DATASTORE_PATH` to control where LevelDB data is stored
 - `PUBSUB_TOPICS` to override pubsub peer discovery topics (default: `todo._peer-discovery._p2p._pubsub`)
 - `TEST_PRIVATE_KEY` / `RELAY_PRIV_KEY` for `--test` runs (optional)
+- **Sync bounds:** `RELAY_ORBITDB_SYNC_TIMEOUT_MS`, `RELAY_ORBITDB_SYNC_COOLDOWN_MS`, `RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS` — keep one unsyncable database from stalling pubsub-driven discovery for the whole node (see `src/config/orbitdb-sync-env.ts`).
 - **Circuit relay (v0.4+):** `RELAY_CIRCUIT_HOP_TIMEOUT_MS`, `RELAY_CIRCUIT_MAX_RESERVATIONS`, `RELAY_CIRCUIT_RESERVATION_TTL_MS`, `RELAY_CIRCUIT_DEFAULT_DATA_LIMIT_BYTES`, `RELAY_CIRCUIT_DEFAULT_DURATION_LIMIT_MS` — defaults are set to **10×** the pre-0.4 hardcoded limits (see `src/config/circuit-relay-env.ts`).
 
 ## Development

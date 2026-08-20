@@ -12,6 +12,11 @@ import { inspect } from "node:util";
 import type { Blockstore } from "interface-blockstore";
 import type { Datastore } from "interface-datastore";
 
+import {
+  getOrbitdbTopicSyncCooldownMs,
+  getOrbitdbTopicSyncMaxCooldownMs,
+  getOrbitdbTopicSyncTimeoutMs,
+} from "../config/orbitdb-sync-env.js";
 import type { PinningHttpHandlers } from "./metrics.js";
 import { DatabaseService } from "./database.js";
 import { syncLog } from "../utils/logger.js";
@@ -199,15 +204,53 @@ function createLibp2pServiceFacade(components: any): Libp2pFacade {
   };
 }
 
-function setupOrbitdbReplicationHandlers(
+export type OrbitdbSyncQueueStats = {
+  /** Topic syncs waiting for a free slot. */
+  waiting: number;
+  /** Topic syncs currently running. */
+  active: number;
+  /** Topics queued or running, i.e. deduped against re-announcement. */
+  queuedTopics: number;
+  /** Topics currently held back after a sync timed out or failed. */
+  cooldownTopics: number;
+  /** Syncs whose slot was reclaimed because they exceeded the timeout. */
+  timedOutSyncs: number;
+};
+
+type OrbitdbReplicationHandlers = {
+  cleanup: () => Promise<void>;
+  getQueueStats: () => OrbitdbSyncQueueStats;
+};
+
+/**
+ * Wire the relay's pubsub events to OrbitDB topic syncs.
+ *
+ * Exported for `mocha/orbitdb-sync-queue.mjs`, which drives it with a fake
+ * pubsub and a database service that hangs on demand — the cheapest way to
+ * reproduce a jammed queue without a real relay.
+ */
+export function setupOrbitdbReplicationHandlers(
   libp2p: Libp2pFacade,
   databaseService: DatabaseService,
-) {
+): OrbitdbReplicationHandlers {
   const syncQueue = new PQueue({ concurrency: 2 });
   const subscribedOrbitdbTopics = new Set<string>();
   const queuedOrbitdbSyncTopics = new Set<string>();
+  /**
+   * Earliest time a topic may re-enter the queue after its sync timed out or
+   * threw. The delay doubles up to a cap, so a database that can never be
+   * synced costs a slot occasionally instead of continuously.
+   */
+  const syncRetryBackoff = new Map<
+    string,
+    { notBefore: number; delayMs: number }
+  >();
+  const syncTimeoutMs = getOrbitdbTopicSyncTimeoutMs();
+  const syncCooldownMs = getOrbitdbTopicSyncCooldownMs();
+  const syncMaxCooldownMs = getOrbitdbTopicSyncMaxCooldownMs();
   const pubsub = libp2p.services.pubsub as any;
   let isShuttingDown = false;
+  let timedOutSyncs = 0;
 
   const ensureOrbitdbTopicSubscribed = async (topic: string) => {
     if (!topic?.startsWith("/orbitdb/")) return;
@@ -235,21 +278,86 @@ function setupOrbitdbReplicationHandlers(
     }
   };
 
+  /**
+   * Run one topic's sync, but stop *waiting* on it after `syncTimeoutMs`.
+   *
+   * The work itself cannot be cancelled — `syncAllOrbitDBRecords` bottoms out in
+   * OrbitDB and Helia calls that take no abort signal — so on timeout it keeps
+   * running detached and only the queue slot is handed back. That is the whole
+   * point: two databases that never finish syncing used to hold both slots for
+   * good, which silently switched off pubsub-driven discovery for the entire
+   * relay. `POST /pinning/sync` kept answering throughout, because the HTTP
+   * handler calls the database service directly and never touches this queue,
+   * so from the outside the node looked healthy.
+   *
+   * @returns true when the sync finished inside the timeout.
+   */
+  const runTopicSyncWithTimeout = async (topic: string): Promise<boolean> => {
+    const work = (async () => {
+      await ensureOrbitdbTopicSubscribed(topic);
+      await databaseService.syncAllOrbitDBRecords(topic);
+    })();
+    // The detached run outlives the race on timeout; keep its rejection handled.
+    work.catch(() => {});
+
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const expiry = new Promise<"timed-out">((resolve) => {
+      timer = setTimeout(() => resolve("timed-out"), syncTimeoutMs);
+      timer.unref?.();
+    });
+
+    try {
+      const outcome = await Promise.race([
+        work.then(() => "completed" as const),
+        expiry,
+      ]);
+      if (outcome === "completed") return true;
+
+      timedOutSyncs++;
+      syncLog(
+        "Queued OrbitDB topic sync timed out, releasing its slot:",
+        inspect(
+          { topic, timeoutMs: syncTimeoutMs },
+          { depth: null, colors: false, compact: false },
+        ),
+      );
+      return false;
+    } finally {
+      if (timer !== undefined) clearTimeout(timer);
+    }
+  };
+
+  const noteSyncSetback = (topic: string) => {
+    const previousDelayMs = syncRetryBackoff.get(topic)?.delayMs ?? 0;
+    const delayMs = Math.min(
+      previousDelayMs > 0 ? previousDelayMs * 2 : syncCooldownMs,
+      syncMaxCooldownMs,
+    );
+    syncRetryBackoff.set(topic, { notBefore: Date.now() + delayMs, delayMs });
+  };
+
   const scheduleOrbitdbTopicSync = (topic: string) => {
     if (!topic?.startsWith("/orbitdb/") || queuedOrbitdbSyncTopics.has(topic))
       return;
+
+    const backoff = syncRetryBackoff.get(topic);
+    if (backoff !== undefined && Date.now() < backoff.notBefore) return;
 
     queuedOrbitdbSyncTopics.add(topic);
     syncQueue
       .add(async () => {
         try {
-          await ensureOrbitdbTopicSubscribed(topic);
-          await databaseService.syncAllOrbitDBRecords(topic);
+          if (await runTopicSyncWithTimeout(topic)) {
+            syncRetryBackoff.delete(topic);
+          } else {
+            noteSyncSetback(topic);
+          }
         } finally {
           queuedOrbitdbSyncTopics.delete(topic);
         }
       })
       .catch((error: any) => {
+        noteSyncSetback(topic);
         syncLog(
           "Queued OrbitDB topic sync failed:",
           topic,
@@ -297,19 +405,45 @@ function setupOrbitdbReplicationHandlers(
     }
   };
 
+  /**
+   * Queue depth, exposed on `/pinning/stats`. A jammed queue used to be
+   * indistinguishable from an idle one from outside the process: `connections`
+   * looked healthy and `syncOperations` simply stopped moving, because the
+   * counter is incremented inside the sync that never started.
+   */
+  const getQueueStats = (): OrbitdbSyncQueueStats => {
+    const now = Date.now();
+    let cooldownTopics = 0;
+    for (const backoff of syncRetryBackoff.values()) {
+      if (now < backoff.notBefore) cooldownTopics++;
+    }
+    return {
+      waiting: syncQueue.size,
+      active: syncQueue.pending,
+      queuedTopics: queuedOrbitdbSyncTopics.size,
+      cooldownTopics,
+      timedOutSyncs,
+    };
+  };
+
   pubsub.addEventListener("message", pubsubMessageHandler);
   pubsub.addEventListener("subscription-change", subscriptionChangeHandler);
 
-  return async () => {
-    isShuttingDown = true;
-    pubsub.removeEventListener("message", pubsubMessageHandler);
-    pubsub.removeEventListener(
-      "subscription-change",
-      subscriptionChangeHandler,
-    );
-    syncQueue.pause();
-    syncQueue.clear();
-    await syncQueue.onIdle();
+  return {
+    getQueueStats,
+    cleanup: async () => {
+      isShuttingDown = true;
+      pubsub.removeEventListener("message", pubsubMessageHandler);
+      pubsub.removeEventListener(
+        "subscription-change",
+        subscriptionChangeHandler,
+      );
+      syncQueue.pause();
+      syncQueue.clear();
+      // Cleared tasks never reach their `finally`, so drop their markers here.
+      queuedOrbitdbSyncTopics.clear();
+      await syncQueue.onIdle();
+    },
   };
 }
 
@@ -380,6 +514,7 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
   private ipfsInstance: any | null;
   private databaseService: DatabaseService | null;
   private cleanupSyncHandlers: (() => Promise<void>) | null;
+  private syncQueueStats: (() => OrbitdbSyncQueueStats) | null;
   private cleanupRegistrarHooks: (() => void) | null;
   private started: boolean;
 
@@ -390,6 +525,7 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
     this.ipfsInstance = null;
     this.databaseService = null;
     this.cleanupSyncHandlers = null;
+    this.syncQueueStats = null;
     this.cleanupRegistrarHooks = null;
     this.started = false;
   }
@@ -409,7 +545,7 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
         this.components.registrar,
         databaseService,
       );
-      const cleanupSyncHandlers = setupOrbitdbReplicationHandlers(
+      const replicationHandlers = setupOrbitdbReplicationHandlers(
         libp2p,
         databaseService,
       );
@@ -417,7 +553,8 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
       this.libp2p = libp2p;
       this.ipfsInstance = ipfs;
       this.databaseService = databaseService;
-      this.cleanupSyncHandlers = cleanupSyncHandlers;
+      this.cleanupSyncHandlers = replicationHandlers.cleanup;
+      this.syncQueueStats = replicationHandlers.getQueueStats;
       this.cleanupRegistrarHooks = cleanupRegistrarHooks;
       this.started = true;
     } catch (error) {
@@ -453,6 +590,7 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
 
     this.started = false;
     this.cleanupSyncHandlers = null;
+    this.syncQueueStats = null;
     this.cleanupRegistrarHooks = null;
     this.databaseService = null;
     this.ipfsInstance = null;
@@ -492,7 +630,18 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
   }
 
   createPinningHttpHandlers(): PinningHttpHandlers {
-    return this.requireDatabaseService().createPinningHttpHandlers();
+    const handlers = this.requireDatabaseService().createPinningHttpHandlers();
+    // Read the queue stats per call, not once here: the handler set is built
+    // as the relay wires up its HTTP server, and stays in use across restarts
+    // of the replication service underneath it.
+    return {
+      ...handlers,
+      getStats: () => {
+        const syncQueue = this.syncQueueStats?.();
+        const stats = handlers.getStats();
+        return syncQueue == null ? stats : { ...stats, syncQueue };
+      },
+    };
   }
 
   async syncAllOrbitDBRecords(dbAddress: string): Promise<void> {
