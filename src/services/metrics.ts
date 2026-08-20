@@ -90,6 +90,7 @@ type MetricsServerOptions = {
     enabled?: boolean
     fallbackMode?: 'pinned-only' | 'pinned-first-network-fallback'
     catTimeoutMs?: number
+    syncTimeoutMs?: number
   }
 }
 
@@ -418,6 +419,8 @@ export class MetricsServer {
       getLibp2p: () => this.getLibp2p(),
       pinning: this.options.pinning,
       getHelia: this.options.getHelia,
+      syncTimeoutMs:
+        this.options.pinningHttp?.syncTimeoutMs ?? Number(process.env.RELAY_PINNING_SYNC_TIMEOUT_MS || 120_000),
       ipfsGateway: {
         enabled: this.options.pinningHttp?.enabled ?? true,
         fallbackMode: this.options.pinningHttp?.fallbackMode ?? 'pinned-first-network-fallback',

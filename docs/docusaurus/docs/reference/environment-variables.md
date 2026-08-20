@@ -97,6 +97,7 @@ Read in `src/services/metrics.ts` and `src/http/pinning-http.ts`. See the
 | `METRICS_CORS_ALLOW_HEADERS` | `Content-Type, Authorization` | Comma-separated `Access-Control-Allow-Headers` value. |
 | `METRICS_CORS_MAX_AGE` | `86400` | `Access-Control-Max-Age` (seconds) for CORS preflight. |
 | `RELAY_IPFS_CAT_TIMEOUT_MS` | `120000` | Timeout for `/ipfs/<cid>` Helia `cat` reads (overridable per handler). |
+| `RELAY_PINNING_SYNC_TIMEOUT_MS` | `120000` | How long `POST /pinning/sync` waits before answering `504 sync_timeout`. The sync keeps running; a later request coalesces onto it. |
 | `RELAY_ORBITDB_SYNC_TIMEOUT_MS` | `120000` | How long a pubsub-triggered topic sync may hold one of the sync queue's two slots. |
 | `RELAY_ORBITDB_SYNC_COOLDOWN_MS` | `60000` | How long a topic is kept out of the sync queue after its sync timed out or failed. Doubles on each further setback. |
 | `RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS` | `900000` (15 min) | Ceiling for that doubling cooldown. |

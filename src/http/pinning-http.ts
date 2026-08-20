@@ -20,6 +20,8 @@ export type PinningHttpRequestHandlerOptions = {
   getLibp2p?: () => Libp2pLike | null
   pinning?: PinningHttpHandlers
   getHelia?: () => HeliaLike | null
+  /** Overrides {@link DEFAULT_SYNC_TIMEOUT_MS} for `POST /pinning/sync`. */
+  syncTimeoutMs?: number
   ipfsGateway?: {
     enabled?: boolean
     fallbackMode?: PinningHttpFallbackMode
@@ -41,6 +43,7 @@ export type JsonErrorCode =
   | 'not_implemented'
   | 'database_not_found'
   | 'sync_failed'
+  | 'sync_timeout'
   | 'invalid_cid'
   | 'invalid_path_encoding'
   | 'directory_path_required'
@@ -51,6 +54,17 @@ export type JsonErrorCode =
 
 const MAX_JSON_BODY_BYTES = 16_384
 const DEFAULT_CAT_TIMEOUT_MS = 120_000
+/**
+ * How long `POST /pinning/sync` waits before answering "still working".
+ *
+ * Without a bound the request simply hangs when a database cannot be synced,
+ * and a caller cannot tell slow from stuck. `orbit-blog` had to work around
+ * that with a 10 s client-side abort and a detached promise.
+ */
+const DEFAULT_SYNC_TIMEOUT_MS = 120_000
+
+/** Sentinel for a sync that is still running when we stop waiting for it. */
+const SYNC_TIMED_OUT = Symbol('sync_timed_out')
 
 function pathnameOnly(urlValue: string | undefined): string {
   return (urlValue ?? '/').split('?')[0] || '/'
@@ -303,6 +317,24 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
   const catTimeoutMs = Number.isFinite(options.ipfsGateway?.catTimeoutMs)
     ? Math.max(1, Math.trunc(options.ipfsGateway?.catTimeoutMs as number))
     : DEFAULT_CAT_TIMEOUT_MS
+  const syncTimeoutMs = Number.isFinite(options.syncTimeoutMs)
+    ? Math.max(1, Math.trunc(options.syncTimeoutMs as number))
+    : DEFAULT_SYNC_TIMEOUT_MS
+
+  const withSyncTimeout = async <T>(work: Promise<T>): Promise<T | typeof SYNC_TIMED_OUT> => {
+    // The work outlives the race when it times out; keep its rejection handled.
+    work.catch(() => {})
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const expiry = new Promise<typeof SYNC_TIMED_OUT>((resolve) => {
+      timer = setTimeout(() => resolve(SYNC_TIMED_OUT), syncTimeoutMs)
+      timer.unref?.()
+    })
+    try {
+      return await Promise.race([work, expiry])
+    } finally {
+      if (timer !== undefined) clearTimeout(timer)
+    }
+  }
 
   return async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     applyCorsHeaders(req, res, options.cors)
@@ -418,7 +450,18 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
           sendError(res, 400, 'missing_db_address', 'Missing or invalid dbAddress')
           return
         }
-        const result = await pinning.syncDatabase(dbAddress)
+        // The sync itself takes no abort signal, so it keeps running after we
+        // stop waiting; the handler coalesces a later request onto it.
+        const result = await withSyncTimeout(pinning.syncDatabase(dbAddress))
+        if (result === SYNC_TIMED_OUT) {
+          sendError(
+            res,
+            504,
+            'sync_timeout',
+            `Sync of ${dbAddress} did not finish within ${syncTimeoutMs}ms and is still running`,
+          )
+          return
+        }
         if (!result.ok) {
           sendError(res, 500, 'sync_failed', result.error || 'sync failed')
           return
