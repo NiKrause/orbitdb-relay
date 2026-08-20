@@ -20,6 +20,7 @@ export type RelayOptions = {
     enabled?: boolean
     fallbackMode?: 'pinned-only' | 'pinned-first-network-fallback'
     catTimeoutMs?: number
+    syncTimeoutMs?: number
   }
 }
 
@@ -192,6 +193,7 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
       enabled: opts.pinningHttp?.enabled ?? true,
       fallbackMode: opts.pinningHttp?.fallbackMode ?? 'pinned-first-network-fallback',
       catTimeoutMs: opts.pinningHttp?.catTimeoutMs,
+      syncTimeoutMs: opts.pinningHttp?.syncTimeoutMs,
     },
   })
   await metricsServer.start()

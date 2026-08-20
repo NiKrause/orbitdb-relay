@@ -193,9 +193,27 @@ curl -sS "$BASE/pinning/stats"
   "syncOperations": 120,
   "failedSyncs": 2,
   "pinnedMediaCids": ["bafy…", "…"],
+  "syncQueue": {
+    "waiting": 0,
+    "active": 1,
+    "queuedTopics": 1,
+    "cooldownTopics": 0,
+    "timedOutSyncs": 0
+  },
   "timestamp": "2026-04-03T12:00:00.000Z"
 }
 ```
+
+**`syncQueue`** describes the queue behind pubsub-driven discovery, and is absent while the
+replication service is not running.
+
+- **`waiting`** / **`active`:** topic syncs queued for a slot, and running in one (two slots).
+- **`queuedTopics`:** topics queued or running — a topic already in here is not enqueued again.
+- **`cooldownTopics`:** topics held back after a sync timed out or failed (see
+  `RELAY_ORBITDB_SYNC_COOLDOWN_MS`).
+- **`timedOutSyncs`:** syncs whose slot was reclaimed on timeout. A rising count means some
+  database cannot be synced; a jammed queue would otherwise be indistinguishable from an idle one,
+  since `syncOperations` is incremented *inside* the sync that never starts.
 
 ---
 
@@ -301,6 +319,9 @@ curl -sS -X POST "$BASE/pinning/sync?dbAddress=/orbitdb/zdpuBExampleAddressRepla
 - **`400`** — invalid JSON, or missing **`dbAddress`** in both JSON body and query
   (`dbAddress` / `address`): `{ "ok": false, "error": "…" }`
 - **`500`** — sync failed: `{ "ok": false, "error": "…" }`
+- **`504`** — the sync did not finish within `RELAY_PINNING_SYNC_TIMEOUT_MS` and is **still
+  running**: `{ "ok": false, "code": "sync_timeout", "error": "…" }`. Retry later rather than
+  treating it as a failure; the retry coalesces onto the sync already in flight.
 
 ---
 
