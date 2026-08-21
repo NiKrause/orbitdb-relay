@@ -2003,12 +2003,13 @@ export class DatabaseService {
     try {
       const orbitAddress = parseAddress(dbAddress);
       const cid = CID.parse(orbitAddress.hash, base58btc);
-      const bytes = await collectUint8Array(
-        await this.withTimeout(
-          this.ipfs.blockstore.get(cid),
-          MANIFEST_LOAD_TIMEOUT_MS,
-          `OrbitDB manifest load for ${dbAddress}`,
-        ),
+      // The deadline has to cover draining the blocks, not just obtaining the
+      // generator that yields them: `blockstore.get()` returns a generator, and
+      // the wait that actually matters happens inside `collectUint8Array`.
+      const bytes = await this.withTimeout(
+        collectUint8Array(this.ipfs.blockstore.get(cid)),
+        MANIFEST_LOAD_TIMEOUT_MS,
+        `OrbitDB manifest load for ${dbAddress}`,
       );
       const { value } = await Block.decode({
         bytes,
@@ -2344,6 +2345,17 @@ export class DatabaseService {
     timeoutMs: number,
     label: string,
   ): Promise<T> {
+    // `Promise.race` settles a non-thenable immediately, handing the value
+    // straight back and disabling the deadline without a word. That is how the
+    // manifest load stayed unbounded for so long: it was passed the generator
+    // from `blockstore.get()`, and because `this.ipfs` is `any`, neither the
+    // compiler nor the runtime objected. Refuse it loudly instead.
+    if (typeof (promise as { then?: unknown } | null)?.then !== "function") {
+      throw new TypeError(
+        `${label}: withTimeout requires a thenable, received ${typeof promise}; ` +
+          "a non-promise cannot be timed out.",
+      );
+    }
     let timeout: ReturnType<typeof setTimeout> | null = null;
     try {
       return await Promise.race([
