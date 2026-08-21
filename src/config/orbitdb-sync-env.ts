@@ -24,6 +24,14 @@ export const DEFAULT_ORBITDB_TOPIC_SYNC_COOLDOWN_MS = 60000
 /** Ceiling for the doubling cooldown, so a hopeless topic is still retried now and then. */
 export const DEFAULT_ORBITDB_TOPIC_SYNC_MAX_COOLDOWN_MS = 15 * 60 * 1000
 
+/**
+ * How long `pubsub.subscribe()` may take before a queued topic sync gives up on
+ * it. Measured on the deployed relay: every timed-out sync hung *here*, before
+ * any sync work started — the task never reached its first log line. Subscribing
+ * is normally near-instant, so this is a stuck-detector, not a budget.
+ */
+export const DEFAULT_ORBITDB_SUBSCRIBE_TIMEOUT_MS = 15000
+
 function envInt(name: string, defaultVal: number): number {
   const raw = process.env[name]
   if (raw === undefined || raw === '') return defaultVal
@@ -41,4 +49,8 @@ export function getOrbitdbTopicSyncCooldownMs(): number {
 
 export function getOrbitdbTopicSyncMaxCooldownMs(): number {
   return envInt('RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS', DEFAULT_ORBITDB_TOPIC_SYNC_MAX_COOLDOWN_MS)
+}
+
+export function getOrbitdbSubscribeTimeoutMs(): number {
+  return envInt('RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS', DEFAULT_ORBITDB_SUBSCRIBE_TIMEOUT_MS)
 }

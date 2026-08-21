@@ -13,9 +13,14 @@ class FakePubsub extends EventTarget {
   constructor() {
     super()
     this.subscribed = []
+    this.hangingSubscribes = new Set()
   }
 
   async subscribe(topic) {
+    if (this.hangingSubscribes.has(topic)) {
+      // No abort path, exactly like the real gossipsub call that hung.
+      await new Promise(() => {})
+    }
     this.subscribed.push(topic)
   }
 
@@ -211,5 +216,76 @@ describe('orbitdb topic sync queue', function () {
       'the recovered database to be synced',
     )
     assert.equal(handlers.getQueueStats().cooldownTopics, 0)
+  })
+
+  it('does not let a hanging subscribe hold a slot', async () => {
+    // Where the deployed relay actually hung: every timed-out task stopped
+    // inside the subscribe step, before it reached any sync work.
+    process.env.RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS = '200'
+    process.env.RELAY_ORBITDB_SYNC_TIMEOUT_MS = '10000'
+    process.env.RELAY_ORBITDB_SYNC_COOLDOWN_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS = '5000'
+
+    const pubsub = new FakePubsub()
+    const databaseService = createFakeDatabaseService()
+    pubsub.hangingSubscribes.add(HEALTHY)
+
+    handlers = setupOrbitdbReplicationHandlers(
+      { services: { pubsub } },
+      databaseService,
+    )
+
+    pubsub.announce(HEALTHY)
+    // Without the deadline the task would sit in subscribe for the full 10 s
+    // sync timeout; with it, the sync runs as soon as subscribing gives up.
+    await waitFor(
+      () => databaseService.state.syncedTopics.includes(HEALTHY),
+      3000,
+      'the sync to run despite a hanging subscribe',
+    )
+    assert.equal(handlers.getQueueStats().timedOutSyncs, 0)
+  })
+
+  it('names the topics currently holding a slot', async () => {
+    process.env.RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_TIMEOUT_MS = '10000'
+    process.env.RELAY_ORBITDB_SYNC_COOLDOWN_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS = '5000'
+
+    const pubsub = new FakePubsub()
+    const databaseService = createFakeDatabaseService()
+    databaseService.state.hangingTopics.add(HANGING[0])
+
+    handlers = setupOrbitdbReplicationHandlers(
+      { services: { pubsub } },
+      databaseService,
+    )
+
+    pubsub.announce(HANGING[0])
+    await waitFor(
+      () => handlers.getQueueStats().activeTopics.length === 1,
+      3000,
+      'the running topic to be reported',
+    )
+
+    const [entry] = handlers.getQueueStats().activeTopics
+    assert.equal(entry.topic, HANGING[0])
+    assert.ok(
+      Number.isFinite(entry.runningMs) && entry.runningMs >= 0,
+      `expected a runtime for the held slot, got ${entry.runningMs}`,
+    )
+
+    // A finished topic must not linger in the readout.
+    databaseService.state.hangingTopics.delete(HANGING[0])
+    pubsub.announce(HEALTHY)
+    await waitFor(
+      () => databaseService.state.syncedTopics.includes(HEALTHY),
+      5000,
+      'the healthy topic to finish',
+    )
+    assert.ok(
+      !handlers.getQueueStats().activeTopics.some((e) => e.topic === HEALTHY),
+      'a finished topic should not be reported as active',
+    )
   })
 })

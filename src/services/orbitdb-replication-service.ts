@@ -13,6 +13,7 @@ import type { Blockstore } from "interface-blockstore";
 import type { Datastore } from "interface-datastore";
 
 import {
+  getOrbitdbSubscribeTimeoutMs,
   getOrbitdbTopicSyncCooldownMs,
   getOrbitdbTopicSyncMaxCooldownMs,
   getOrbitdbTopicSyncTimeoutMs,
@@ -204,11 +205,46 @@ function createLibp2pServiceFacade(components: any): Libp2pFacade {
   };
 }
 
+/**
+ * Await `promise`, but give up after `timeoutMs` and reject instead.
+ *
+ * The underlying work is not cancellable, so it keeps running detached; only the
+ * waiting stops. Its rejection is handled here so dropping it cannot surface as
+ * an unhandled rejection.
+ */
+async function withDeadline<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  label: string,
+): Promise<T> {
+  promise.catch(() => {});
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const expiry = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${timeoutMs}ms`)),
+      timeoutMs,
+    );
+    timer.unref?.();
+  });
+  try {
+    return await Promise.race([promise, expiry]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
+
 export type OrbitdbSyncQueueStats = {
   /** Topic syncs waiting for a free slot. */
   waiting: number;
   /** Topic syncs currently running. */
   active: number;
+  /**
+   * The topics in those slots and how long each has held one, longest first.
+   * `active` alone cannot answer the question that matters when syncs stall —
+   * *which* database is stuck — and answering it used to mean reading the
+   * relay's journal on the host.
+   */
+  activeTopics: Array<{ topic: string; runningMs: number }>;
   /** Topics queued or running, i.e. deduped against re-announcement. */
   queuedTopics: number;
   /** Topics currently held back after a sync timed out or failed. */
@@ -236,6 +272,8 @@ export function setupOrbitdbReplicationHandlers(
   const syncQueue = new PQueue({ concurrency: 2 });
   const subscribedOrbitdbTopics = new Set<string>();
   const queuedOrbitdbSyncTopics = new Set<string>();
+  /** Topic -> when its task took a slot, for the `activeTopics` readout. */
+  const activeSyncStartedAt = new Map<string, number>();
   /**
    * Earliest time a topic may re-enter the queue after its sync timed out or
    * threw. The delay doubles up to a cap, so a database that can never be
@@ -245,6 +283,7 @@ export function setupOrbitdbReplicationHandlers(
     string,
     { notBefore: number; delayMs: number }
   >();
+  const subscribeTimeoutMs = getOrbitdbSubscribeTimeoutMs();
   const syncTimeoutMs = getOrbitdbTopicSyncTimeoutMs();
   const syncCooldownMs = getOrbitdbTopicSyncCooldownMs();
   const syncMaxCooldownMs = getOrbitdbTopicSyncMaxCooldownMs();
@@ -257,7 +296,16 @@ export function setupOrbitdbReplicationHandlers(
     if (subscribedOrbitdbTopics.has(topic)) return;
 
     try {
-      await pubsub.subscribe(topic);
+      // Unbounded before 0.10.7, and this is where topic syncs actually hung:
+      // timed-out tasks never reached the log line below, so they never got as
+      // far as opening the database. Subscribing keeps running detached on
+      // timeout; we only stop waiting on it, and leave the topic unmarked so a
+      // later attempt can subscribe properly.
+      await withDeadline(
+        pubsub.subscribe(topic),
+        subscribeTimeoutMs,
+        `pubsub subscribe for ${topic}`,
+      );
       subscribedOrbitdbTopics.add(topic);
       await databaseService.prefetchManifestForLogging(topic);
       const dbName = databaseService.getCachedDbName(topic);
@@ -346,6 +394,7 @@ export function setupOrbitdbReplicationHandlers(
     queuedOrbitdbSyncTopics.add(topic);
     syncQueue
       .add(async () => {
+        activeSyncStartedAt.set(topic, Date.now());
         try {
           if (await runTopicSyncWithTimeout(topic)) {
             syncRetryBackoff.delete(topic);
@@ -353,6 +402,7 @@ export function setupOrbitdbReplicationHandlers(
             noteSyncSetback(topic);
           }
         } finally {
+          activeSyncStartedAt.delete(topic);
           queuedOrbitdbSyncTopics.delete(topic);
         }
       })
@@ -417,9 +467,13 @@ export function setupOrbitdbReplicationHandlers(
     for (const backoff of syncRetryBackoff.values()) {
       if (now < backoff.notBefore) cooldownTopics++;
     }
+    const activeTopics = Array.from(activeSyncStartedAt.entries())
+      .map(([topic, startedAt]) => ({ topic, runningMs: now - startedAt }))
+      .sort((a, b) => b.runningMs - a.runningMs);
     return {
       waiting: syncQueue.size,
       active: syncQueue.pending,
+      activeTopics,
       queuedTopics: queuedOrbitdbSyncTopics.size,
       cooldownTopics,
       timedOutSyncs,
@@ -442,6 +496,7 @@ export function setupOrbitdbReplicationHandlers(
       syncQueue.clear();
       // Cleared tasks never reach their `finally`, so drop their markers here.
       queuedOrbitdbSyncTopics.clear();
+      activeSyncStartedAt.clear();
       await syncQueue.onIdle();
     },
   };

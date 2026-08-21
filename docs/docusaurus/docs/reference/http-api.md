@@ -196,6 +196,7 @@ curl -sS "$BASE/pinning/stats"
   "syncQueue": {
     "waiting": 0,
     "active": 1,
+    "activeTopics": [{ "topic": "/orbitdb/zdpu…", "runningMs": 1840 }],
     "queuedTopics": 1,
     "cooldownTopics": 0,
     "timedOutSyncs": 0
@@ -208,6 +209,9 @@ curl -sS "$BASE/pinning/stats"
 replication service is not running.
 
 - **`waiting`** / **`active`:** topic syncs queued for a slot, and running in one (two slots).
+- **`activeTopics`:** which topics hold those slots and for how long, longest first. A
+  topic sitting here for minutes is the database to investigate; before this existed,
+  answering "which one is stuck?" meant reading the relay's journal on the host.
 - **`queuedTopics`:** topics queued or running — a topic already in here is not enqueued again.
 - **`cooldownTopics`:** topics held back after a sync timed out or failed (see
   `RELAY_ORBITDB_SYNC_COOLDOWN_MS`).
