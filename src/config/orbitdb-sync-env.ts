@@ -26,9 +26,9 @@ export const DEFAULT_ORBITDB_TOPIC_SYNC_MAX_COOLDOWN_MS = 15 * 60 * 1000
 
 /**
  * How long `pubsub.subscribe()` may take before a queued topic sync gives up on
- * it. Measured on the deployed relay: every timed-out sync hung *here*, before
- * any sync work started — the task never reached its first log line. Subscribing
- * is normally near-instant, so this is a stuck-detector, not a budget.
+ * it. Belt and braces: gossipsub subscribes synchronously, so this never fires
+ * in practice, but `pubsub` is untyped at the call site. The hang this was
+ * originally meant to catch turned out to be the manifest fetch alongside it.
  */
 export const DEFAULT_ORBITDB_SUBSCRIBE_TIMEOUT_MS = 15000
 

@@ -296,11 +296,12 @@ export function setupOrbitdbReplicationHandlers(
     if (subscribedOrbitdbTopics.has(topic)) return;
 
     try {
-      // Unbounded before 0.10.7, and this is where topic syncs actually hung:
-      // timed-out tasks never reached the log line below, so they never got as
-      // far as opening the database. Subscribing keeps running detached on
-      // timeout; we only stop waiting on it, and leave the topic unmarked so a
-      // later attempt can subscribe properly.
+      // Defence in depth only. 0.10.7 added this believing it was where topic
+      // syncs hung; it is not — gossipsub's subscribe is synchronous, so the
+      // await cannot block. The real hang was the unbounded manifest fetch in
+      // `prefetchManifestForLogging` below, fixed in 0.10.8. This deadline stays
+      // because `pubsub` is untyped here and another implementation may well
+      // return a promise.
       await withDeadline(
         pubsub.subscribe(topic),
         subscribeTimeoutMs,
