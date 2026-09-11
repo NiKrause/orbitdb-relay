@@ -48,10 +48,10 @@ importers:
         version: 2.0.2
       '@le-space/orbitdb-access-controller-delegated-todo':
         specifier: ^0.1.0
-        version: 0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.2(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)
+        version: 0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)
       '@le-space/orbitdb-identity-provider-webauthn-did':
-        specifier: ^0.5.2
-        version: 0.5.2(@orbitdb/core@4.0.0)
+        specifier: ^0.5.4
+        version: 0.5.4(@orbitdb/core@4.0.0)
       '@libp2p/autonat':
         specifier: ^3.0.24
         version: 3.0.24
@@ -594,8 +594,8 @@ packages:
       '@le-space/orbitdb-identity-provider-webauthn-did': ^0.2.10
       '@orbitdb/core': ^3.0.0
 
-  '@le-space/orbitdb-identity-provider-webauthn-did@0.5.2':
-    resolution: {integrity: sha512-4PBGwj8My6DZmnG2IRgNKDfQVMV/NTXrAI5dZY1NAAR/VNaPqZZ2PHL7E7pITtOeMAJZJ+fbq/lsPmzF56H0FQ==}
+  '@le-space/orbitdb-identity-provider-webauthn-did@0.5.4':
+    resolution: {integrity: sha512-iFq0CgvQLqd8vUHTlZ8bnurcsdDRzGcegazZ6J1ALdVmq0QJ84DiBVFyzYox0ObLzf0plYfyIwyYXgX6Vg7abg==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@orbitdb/core': ^4.0.0
@@ -3802,12 +3802,12 @@ snapshots:
     dependencies:
       iso-base: '@le-space/iso-base@4.3.0'
 
-  '@le-space/orbitdb-access-controller-delegated-todo@0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.2(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)':
+  '@le-space/orbitdb-access-controller-delegated-todo@0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)':
     dependencies:
-      '@le-space/orbitdb-identity-provider-webauthn-did': 0.5.2(@orbitdb/core@4.0.0)
+      '@le-space/orbitdb-identity-provider-webauthn-did': 0.5.4(@orbitdb/core@4.0.0)
       '@orbitdb/core': 4.0.0
 
-  '@le-space/orbitdb-identity-provider-webauthn-did@0.5.2(@orbitdb/core@4.0.0)':
+  '@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0)':
     dependencies:
       '@ipld/dag-cbor': 10.0.1
       '@ipld/dag-ucan': 3.4.5
