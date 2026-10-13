@@ -322,8 +322,9 @@ export class DatabaseService {
    * that stringify to nothing useful (`""` / `[object Object]`).
    *
    * Entries are removed again by {@link DatabaseService.reconnectKnownDatabasePeers}
-   * as soon as a peer fails to dial, so the directory reflects who is still
-   * reachable rather than everyone who ever subscribed.
+   * as soon as a peer fails to dial, or has gone with no address to dial it
+   * back on, so the directory reflects who is still reachable rather than
+   * everyone who ever subscribed.
    *
    * @param dbAddress - The OrbitDB database address the peer subscribed to.
    * @param peer - The peer id (or object with `toString()`); stored as-is for
@@ -353,6 +354,14 @@ export class DatabaseService {
    * data protocol. Best-effort and fault-tolerant: failures are logged, never
    * thrown, and the local peer is skipped.
    *
+   * A subscriber the relay cannot dial back is left alone: a browser only ever
+   * connects inbound, and its own addresses are circuits through this very
+   * relay. Hanging up on it cost it this connection, every circuit through
+   * the relay and its reservation, for a dial that could not succeed (#59).
+   * It still exchanges heads — it dials the relay itself when the reopened
+   * database's topic subscription reaches it. Such a peer is forgotten only
+   * once it has gone.
+   *
    * @param dbAddress - Address of the just-opened database whose subscribers to
    * reconnect.
    */
@@ -366,6 +375,24 @@ export class DatabaseService {
     await Promise.allSettled(
       Array.from(peers.entries(), async ([peerId, peer]) => {
         if (peerId === libp2p.peerId?.toString?.()) return;
+        if (!(await this.canDialBack(libp2p, peer))) {
+          if (this.isConnected(libp2p, peer)) {
+            syncLog(
+              "Kept inbound-only OrbitDB subscriber without reconnecting:",
+              { dbAddress, peerId },
+            );
+            return;
+          }
+          // Gone, and nothing to dial: forget it, as the failed dial below would.
+          peers.delete(peerId);
+          syncLog("Forgot unreachable OrbitDB subscriber:", {
+            dbAddress,
+            peerId,
+            remaining: peers.size,
+            error: "no address to dial back",
+          });
+          return;
+        }
         try {
           // OrbitDB registers its native heads topology while opening the DB.
           // Reconnecting an already-known subscriber after that registration
@@ -394,6 +421,44 @@ export class DatabaseService {
           });
         }
       }),
+    );
+  }
+
+  /**
+   * Whether the relay could open a connection to a peer by itself: the peer
+   * store has an address for it that libp2p can dial and that is not a circuit
+   * through this very relay. A libp2p without a peer store (the unit tests'
+   * fakes) counts as dialable, which keeps the behaviour they pin.
+   *
+   * @param libp2p - The node, or the service facade over it.
+   * @param peer - The peer id as stored by {@link DatabaseService.rememberDatabasePeer}.
+   */
+  private async canDialBack(libp2p: any, peer: unknown): Promise<boolean> {
+    if (typeof libp2p.peerStore?.get !== "function") return true;
+    let addresses: Array<{ multiaddr?: { toString?: () => string } }> = [];
+    try {
+      addresses = (await libp2p.peerStore.get(peer))?.addresses ?? [];
+    } catch {
+      // Unknown to the peer store: nothing to dial.
+      return false;
+    }
+    const self = libp2p.peerId?.toString?.();
+    for (const { multiaddr } of addresses) {
+      const text = multiaddr?.toString?.() ?? "";
+      if (self && text.includes(`/p2p/${self}/p2p-circuit`)) continue;
+      if (typeof libp2p.isDialable !== "function") return true;
+      if (await libp2p.isDialable(multiaddr).catch(() => false)) return true;
+    }
+    return false;
+  }
+
+  /** Whether a connection to the peer is open; true when libp2p cannot say. */
+  private isConnected(libp2p: any, peer: unknown): boolean {
+    if (typeof libp2p.getConnections !== "function") return true;
+    const connections = libp2p.getConnections(peer);
+    return (
+      Array.isArray(connections) &&
+      connections.some((connection: any) => connection?.status === "open")
     );
   }
 
@@ -454,8 +519,9 @@ export class DatabaseService {
    * always releases the database afterward.
    *
    * @param protocol - The dialed heads protocol id (must map to a known DB).
-   * @param context - libp2p stream context; `connection.remotePeer` identifies
-   * the caller so the relay can dial back if needed.
+   * @param context - The stream and its connection, as libp2p 3 hands them to
+   * a handler; `connection.remotePeer` identifies the caller so the relay can
+   * dial back if needed. Both reach OrbitDB's handler as separate arguments.
    * @param getRegisteredHandler - Lookup for OrbitDB's own handler registered
    * for `protocol`; may throw until registration completes (polled with a
    * timeout).
@@ -464,7 +530,7 @@ export class DatabaseService {
    */
   async handleOnDemandHeadsProtocol(
     protocol: string,
-    context: { connection?: { remotePeer?: unknown } },
+    context: { stream: unknown; connection?: { remotePeer?: unknown } },
     getRegisteredHandler: (protocol: string) => any,
   ): Promise<void> {
     const dbAddress = this.dbAddressFromHeadsProtocol(protocol);
@@ -480,7 +546,7 @@ export class DatabaseService {
         protocol,
         getRegisteredHandler,
       );
-      await handlerRecord.handler(context);
+      await handlerRecord.handler(context.stream, context.connection);
     } finally {
       await this.releaseOpenDatabase(dbAddress, db);
     }
