@@ -58,7 +58,8 @@ function createHeliaWithLibp2p(
 }
 
 type StreamHandlerRecordLike = {
-  handler: (context: any) => Promise<void>;
+  /** libp2p 3 calls a handler as `(stream, connection)`. */
+  handler: (stream: any, connection: any) => Promise<void>;
   options?: Record<string, unknown>;
 };
 
@@ -543,10 +544,15 @@ function installOnDemandOrbitdbHeadsSupport(
         options: {
           runOnLimitedConnection: true,
         },
-        handler: async (context: any) => {
+        // libp2p 3 passes `(stream, connection)`; libp2p 2 passed one object
+        // holding both, which is the shape this took until #59. OrbitDB's own
+        // handler reads `connection.remotePeer` before anything else, so a
+        // dropped connection made every on-demand exchange throw, and libp2p
+        // reset the stream under the caller.
+        handler: async (stream: any, connection: any) => {
           await databaseService.handleOnDemandHeadsProtocol(
             protocol,
-            context,
+            { stream, connection },
             originalGetHandler,
           );
         },

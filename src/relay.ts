@@ -142,13 +142,14 @@ function attachOrbitdbHeadsStreamLogging(libp2p: any) {
       }
 
       headsStreamLog('handle:registered %s', protocol)
-      const wrappedHandler = async (context: any) => {
+      // libp2p 3 calls a handler as `(stream, connection)`.
+      const wrappedHandler = async (stream: any, connection: any) => {
         headsStreamLog(
           'handle:received %s %s',
           protocol,
-          context?.connection?.remotePeer?.toString?.() || 'unknown'
+          connection?.remotePeer?.toString?.() || 'unknown'
         )
-        return await handler(context)
+        return await handler(stream, connection)
       }
 
       return await originalHandle(protocol, wrappedHandler, options)

@@ -95,4 +95,77 @@ describe("database peer directory", () => {
     await service.reconnectKnownDatabasePeers(address);
     assert.equal(service.knownDatabasePeers.get(address).size, 1);
   });
+
+  it("leaves a connected subscriber alone when it cannot be dialled back", async () => {
+    // A browser only ever connects inbound, and its addresses are circuits
+    // through this very relay. Hanging up on it cost it every circuit and its
+    // reservation, for a dial that could not succeed (#59). A peer with an
+    // address of its own is still reconnected.
+    const service = new DatabaseService();
+    const calls = [];
+    const relayId = "relay";
+    const circuitThroughUs = `/ip4/127.0.0.1/tcp/4001/ws/p2p/${relayId}/p2p-circuit/p2p/browser`;
+    service.ipfs = {
+      libp2p: {
+        peerId: { toString: () => relayId },
+        hangUp: async (peer) => calls.push(["hangUp", peer.toString()]),
+        dial: async (peer) => calls.push(["dial", peer.toString()]),
+        getConnections: (peer) =>
+          peer.toString() === "browser" ? [{ status: "open" }] : [],
+        peerStore: {
+          get: async (peer) => ({
+            addresses: [
+              {
+                multiaddr: {
+                  toString: () =>
+                    peer.toString() === "browser"
+                      ? circuitThroughUs
+                      : "/ip4/10.0.0.2/tcp/4001",
+                },
+              },
+            ],
+          }),
+        },
+        isDialable: async (multiaddr) =>
+          !multiaddr.toString().includes("/p2p-circuit"),
+      },
+    };
+    const address = "/orbitdb/test-address";
+    service.rememberDatabasePeer(address, { toString: () => "browser" });
+    service.rememberDatabasePeer(address, { toString: () => "node" });
+
+    await service.reconnectKnownDatabasePeers(address);
+
+    assert.deepEqual(calls, [
+      ["hangUp", "node"],
+      ["dial", "node"],
+    ]);
+    assert.deepEqual(
+      [...service.knownDatabasePeers.get(address).keys()].sort(),
+      ["browser", "node"],
+      "the connected browser must stay in the directory",
+    );
+  });
+
+  it("forgets a subscriber that has gone and left no address to dial back", async () => {
+    const service = new DatabaseService();
+    const calls = [];
+    service.ipfs = {
+      libp2p: {
+        peerId: { toString: () => "relay" },
+        hangUp: async (peer) => calls.push(["hangUp", peer.toString()]),
+        dial: async (peer) => calls.push(["dial", peer.toString()]),
+        getConnections: () => [],
+        peerStore: { get: async () => ({ addresses: [] }) },
+        isDialable: async () => true,
+      },
+    };
+    const address = "/orbitdb/test-address";
+    service.rememberDatabasePeer(address, { toString: () => "closed-tab" });
+
+    await service.reconnectKnownDatabasePeers(address);
+
+    assert.deepEqual(calls, [], "nothing to hang up or dial");
+    assert.equal(service.knownDatabasePeers.get(address).size, 0);
+  });
 });
