@@ -8,6 +8,7 @@ import { initializeStorage } from './services/storage.js'
 import { MetricsServer } from './services/metrics.js'
 import { orbitdbReplicationService, type OrbitdbReplicationServiceApi } from './services/orbitdb-replication-service.js'
 import { connectivityDebugProtocolsService, type ConnectivityDebugProtocolsServiceInit } from './services/connectivity-debug-protocols-service.js'
+import { attestBridgeService } from './services/attest-bridge-service.js'
 import { setupEventHandlers } from './events/handlers.js'
 import { loggingConfig } from './config/logging.js'
 import { headsStreamLog, log } from './utils/logger.js'
@@ -183,6 +184,13 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
       ...(debugProtocols != null
         ? {
             connectivityDebugProtocols: connectivityDebugProtocolsService(debugProtocols),
+          }
+        : {}),
+      // The attest relay as a libp2p protocol, handed to the attest relay
+      // beside this one (relay-button's image runs it on 127.0.0.1:8787).
+      ...(!['off', 'false', '0'].includes(String(process.env.RELAY_ATTEST_BRIDGE ?? '').toLowerCase())
+        ? {
+            attestBridge: attestBridgeService({ bridgeUrl: process.env.RELAY_ATTEST_BRIDGE_URL || undefined }),
           }
         : {}),
     }),

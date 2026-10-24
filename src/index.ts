@@ -20,3 +20,5 @@ export {
   createPinningHttpRequestHandler,
   isManagedPinningHttpPath,
 } from './http/pinning-http.js'
+export { attestBridgeService, ATTEST_PROTOCOL, parseAttestHeader, clientAddressFor } from './services/attest-bridge-service.js'
+export type { AttestBridgeServiceInit } from './services/attest-bridge-service.js'
