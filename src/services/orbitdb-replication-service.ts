@@ -499,6 +499,10 @@ export function setupOrbitdbReplicationHandlers(
   const scheduleOrbitdbTopicSync = (topic: string) => {
     if (!topic?.startsWith("/orbitdb/") || queuedOrbitdbSyncTopics.has(topic))
       return;
+    // OrbitDB replicates a database the relay holds open by itself, and the
+    // database service pins its media from `update` events. A sync per
+    // message only took a slot from databases the relay has not seen yet.
+    if (databaseService.isHeldOpen(topic)) return;
 
     const backoff = syncRetryBackoff.get(topic);
     if (backoff !== undefined && Date.now() < backoff.notBefore) return;
