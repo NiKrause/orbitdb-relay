@@ -59,6 +59,28 @@ describe('manifest load deadline', function () {
     )
   })
 
+  it('cancels the want when it gives up', async () => {
+    const service = new DatabaseService()
+    const signals = []
+    service.ipfs = {
+      blockstore: {
+        get(_cid, options = {}) {
+          signals.push(options.signal)
+          return neverYieldingBlockstore().blockstore.get()
+        },
+      },
+    }
+
+    await service.prefetchManifestForLogging(DB_ADDRESS)
+    // The signal's own timer may fire a moment after the race gave up.
+    await new Promise((resolve) => setTimeout(resolve, 100))
+
+    // A want left running stays on the wantlist the relay sends every peer
+    // (#66), so the deadline has to reach the blockstore, not only the race.
+    assert.equal(signals.length, 1)
+    assert.equal(signals[0]?.aborted, true, 'the want outlived the deadline')
+  })
+
   it('refuses a non-thenable instead of silently dropping the deadline', async () => {
     const service = new DatabaseService()
     await assert.rejects(

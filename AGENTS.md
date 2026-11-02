@@ -225,6 +225,7 @@ Note: `src/utils/logger.ts` uses `@libp2p/logger` namespaces under `le-space:rel
 
 - Pubsub topic strings are treated as OrbitDB addresses (see caveat above).
 - `--test` key override expects a *hex string of protobuf bytes*, not a raw seed or base64.
+- The relay's bitswap answers peers from the local blockstore only (`withLocalBitswapLedger` in `src/services/orbitdb-replication-service.ts`). Plain `withBitswap(helia)` hands its ledger Helia's networked blockstore, and with `@helia/bitswap` < 4.0.9 one wanted block the relay lacks stalls every reply queued with it (#66).
 - Sync waits for update events before enqueueing pin jobs; if no update is observed during timeout, no new media pin enqueue occurs in that sync run.
 - Shutdown now attempts coordinated queue/listener teardown, metrics server close, OrbitDB stop, and IPFS/libp2p stop; ordering still matters when extending lifecycle code.
 - Under heavy load, **Node** can rarely **abort** in **`CipherJob` / `errors->Empty()`** (OpenSSL/WebCrypto thread pool), often involving **`@peculiar/webcrypto`** (libp2p TLS/WebRTC). Mitigations: **`UV_THREADPOOL_SIZE`** (e.g. `1` to serialize), **`RELAY_DISABLE_WEBRTC`**, or a different Node patch build — see **`docs/docusaurus/docs/getting-started/systemd.md`** (Troubleshooting).

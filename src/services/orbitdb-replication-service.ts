@@ -45,7 +45,7 @@ function createHeliaWithLibp2p(
   libp2p: Libp2pFacade,
   init: Pick<OrbitdbReplicationServiceInit, "datastore" | "blockstore">,
 ): any {
-  return withBitswap(
+  return withLocalBitswapLedger(
     withLibp2p(
       withHTTP(
         createHeliaLight({
@@ -57,7 +57,46 @@ function createHeliaWithLibp2p(
       ),
       libp2p as any,
     ),
+    init.blockstore,
   );
+}
+
+/**
+ * `withBitswap`, except that bitswap answers peers from `blockstore` alone.
+ *
+ * `withBitswap(helia)` builds its broker from `helia`, so the ledger that
+ * answers a peer read each wanted block through `helia.blockstore`, Helia's
+ * networked blockstore. A want for a block the relay lacked became the
+ * relay's own want, with no deadline, and every block queued for that peer
+ * in the same pass stayed unsent behind it (#66). From the local blockstore
+ * such a block throws `NotFoundError`, which the ledger skips; it goes out
+ * when the relay fetches it, as Helia notifies bitswap after storing a
+ * fetched block.
+ *
+ * Bitswap reads its `blockstore` for nothing else, so fetching is unchanged.
+ * `BitswapBlockBroker` is not exported, so the mixin is started with a view
+ * of Helia whose `blockstore` is the local one. It has to be a proxy, not a
+ * prototype copy: bitswap spreads its components (`{ ...helia }`).
+ */
+function withLocalBitswapLedger(helia: any, blockstore: Blockstore): any {
+  const addMixin = (mixin: any) =>
+    helia.addMixin({
+      ...mixin,
+      start: (node: any) =>
+        mixin.start(
+          new Proxy(node, {
+            get: (target, prop) =>
+              prop === "blockstore" ? blockstore : Reflect.get(target, prop),
+          }),
+        ),
+    });
+  withBitswap(
+    new Proxy(helia, {
+      get: (target, prop) =>
+        prop === "addMixin" ? addMixin : Reflect.get(target, prop),
+    }),
+  );
+  return helia;
 }
 
 type StreamHandlerRecordLike = {
