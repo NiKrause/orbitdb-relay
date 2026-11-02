@@ -4,16 +4,6 @@ import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { setTimeout as delay } from 'node:timers/promises'
 
-import { createLibp2p } from 'libp2p'
-import { gossipsub } from '@libp2p/gossipsub'
-import { noise } from '@chainsafe/libp2p-noise'
-import { yamux } from '@chainsafe/libp2p-yamux'
-import { identify } from '@libp2p/identify'
-import { ping } from '@libp2p/ping'
-import { circuitRelayTransport, circuitRelayServer } from '@libp2p/circuit-relay-v2'
-import { tcp } from '@libp2p/tcp'
-import { webSockets } from '@libp2p/websockets'
-import { multiaddr } from '@multiformats/multiaddr'
 import { OrbitDBAccessController, parseAddress } from '@orbitdb/core'
 import * as Block from 'multiformats/block'
 import { CID } from 'multiformats/cid'
@@ -21,7 +11,13 @@ import * as dagCbor from '@ipld/dag-cbor'
 import { sha256 } from 'multiformats/hashes/sha2'
 import { base58btc } from 'multiformats/bases/base58'
 
-import { createClient, stopClient, withTimeout } from './lib/relay-replication-harness.mjs'
+import {
+  closeRelayServiceNode,
+  createClient,
+  createRelayServiceNode,
+  stopClient,
+  withTimeout,
+} from './lib/relay-replication-harness.mjs'
 
 /**
  * #66, step 2. A browser opening somebody else's fresh list needs the list's
@@ -208,42 +204,6 @@ describe('manifest fast lane', function () {
   })
 })
 
-async function createRelayNode({ storageDir, wsPort, tcpPort }) {
-  const [{ initializeStorage }, { orbitdbReplicationService }] = await Promise.all([
-    import('../dist/services/storage.js'),
-    import('../dist/index.js'),
-  ])
-
-  const storage = await initializeStorage(storageDir)
-  const libp2p = await createLibp2p({
-    privateKey: storage.privateKey,
-    datastore: storage.datastore,
-    addresses: {
-      listen: [`/ip4/127.0.0.1/tcp/${tcpPort}`, `/ip4/127.0.0.1/tcp/${wsPort}/ws`],
-    },
-    transports: [circuitRelayTransport(), tcp(), webSockets()],
-    connectionEncrypters: [noise()],
-    streamMuxers: [yamux()],
-    services: {
-      identify: identify(),
-      ping: ping(),
-      pubsub: gossipsub({ allowPublishToZeroTopicPeers: true }),
-      relay: circuitRelayServer(),
-      orbitdbReplication: orbitdbReplicationService({
-        datastore: storage.datastore,
-        blockstore: storage.blockstore,
-        orbitdbDirectory: join(storageDir, 'orbitdb'),
-      }),
-    },
-  })
-
-  return {
-    storage,
-    libp2p,
-    relayAddr: multiaddr(`/ip4/127.0.0.1/tcp/${wsPort}/ws`),
-  }
-}
-
 /** The CIDs `orbitdb.open(address)` needs, read from the creator's own blocks. */
 async function manifestChainCids(ipfs, address) {
   const read = async (hash) => {
@@ -286,7 +246,7 @@ describe('manifest fast lane against a real OrbitDB client', function () {
 
   it('lets a peer open a fresh database the relay knows only from the fast lane', async () => {
     const wsPort = 26492 + Math.floor(Math.random() * 1000)
-    const relay = await createRelayNode({
+    const relay = await createRelayServiceNode({
       storageDir: join(tempRoot, 'relay'),
       wsPort,
       tcpPort: wsPort - 1,
@@ -377,15 +337,7 @@ describe('manifest fast lane against a real OrbitDB client', function () {
       for (const release of releaseSyncs) release()
       if (bob) await stopClient(bob)
       if (alice) await stopClient(alice)
-      try {
-        await relay.libp2p.stop()
-      } catch {}
-      try {
-        await relay.storage.datastore.close()
-      } catch {}
-      try {
-        await relay.storage.blockstore.close()
-      } catch {}
+      await closeRelayServiceNode(relay)
     }
   })
 })

@@ -128,6 +128,12 @@ const SYNC_IN_FLIGHT_STALE_MS = 45_000;
 const COALESCED_SYNC_WAIT_MS = 5_000;
 const OPEN_IN_FLIGHT_STALE_MS = 45_000;
 const MANIFEST_LOAD_TIMEOUT_MS = 5_000;
+/**
+ * How long a held-open database's `update` events are gathered before they are
+ * handled together, so a replicated batch of entries costs one pass, not one
+ * per entry.
+ */
+const HELD_OPEN_UPDATE_BATCH_MS = 250;
 
 /** Deduped media CID plus which payload fields referenced it (for sync/pin logs). */
 export type ExtractedMediaCid = { cid: string; sources: string[] };
@@ -276,8 +282,10 @@ export class DatabaseService {
   metrics: MetricsServer;
   identityDatabases: Map<string, any>;
   databaseContexts: Map<string, any>;
+  /** Pending batch timer of each watched database, by address. */
   updateTimers: Map<string, any>;
-  eventHandlers: Map<string, any>;
+  /** The `update` listener on each watched database, by address. */
+  eventHandlers: Map<string, { db: any; onUpdate: (entry: any) => void }>;
   syncInFlight: Map<string, InFlightRecord<void>>;
   openInFlight: Map<string, InFlightRecord<any>>;
   databaseUseCounts: Map<string, number>;
@@ -580,6 +588,135 @@ export class DatabaseService {
         dbName,
         failure: { step, error: error?.message || String(error) },
       };
+    }
+  }
+
+  /**
+   * Whether the relay holds this database open. OrbitDB then replicates it by
+   * itself, and {@link DatabaseService.watchDatabaseUpdates} pins its media, so
+   * a message on its topic needs no queued sync (#66).
+   */
+  isHeldOpen(dbAddress: string): boolean {
+    return this.pinnedOpenDatabases.has(dbAddress);
+  }
+
+  /**
+   * Store a snapshot as the database's replication proof. One without a
+   * positive entry count — an update burst, or an empty scan — does not
+   * replace an earlier positive proof; it only refreshes its timestamp.
+   */
+  private recordSyncProof(
+    dbAddress: string,
+    snapshot: DatabaseSyncSnapshot,
+  ): void {
+    const existingPinned = this.pinnedDatabasesByAddress.get(dbAddress);
+    const shouldKeepExistingPositiveProof =
+      (existingPinned?.entryCount ?? 0) > 0 &&
+      (snapshot.entryCount == null || snapshot.entryCount === 0);
+    this.pinnedDatabasesByAddress.set(
+      dbAddress,
+      shouldKeepExistingPositiveProof
+        ? {
+            ...existingPinned!,
+            lastSyncedAt: new Date().toISOString(),
+          }
+        : {
+            address: dbAddress,
+            lastSyncedAt: new Date().toISOString(),
+            entryCount: snapshot.entryCount,
+            lastRecord: snapshot.lastRecord,
+            snapshotSource: snapshot.source,
+          },
+    );
+  }
+
+  /**
+   * Handle a database's `update` events as they replicate, without a sync.
+   *
+   * Pubsub messages on a held-open database's topic no longer queue a sync
+   * (#66), and that sync was what pinned media from new entries, refreshed the
+   * replication proof and re-announced heads. This listener does those three
+   * things instead, in batches of {@link HELD_OPEN_UPDATE_BATCH_MS}.
+   *
+   * A sync attaches it as soon as it opens the database, not only once it
+   * decides to keep it open: entries that replicate between the end of the
+   * sync's own update wait and that decision would otherwise be missed. While
+   * a sync of the address is in flight the listener only pins media; the sync
+   * records the proof and re-announces heads itself. Pins are deduplicated, so
+   * an entry seen by both costs nothing extra.
+   *
+   * @param dbAddress - The database's address.
+   * @param db - The open database. A different instance for the same address
+   * replaces the earlier listener.
+   */
+  private watchDatabaseUpdates(dbAddress: string, db: any): void {
+    if (typeof db?.events?.on !== "function") return;
+    if (this.eventHandlers.get(dbAddress)?.db === db) return;
+    this.unwatchDatabaseUpdates(dbAddress);
+
+    let pending: any[] = [];
+    const flush = async () => {
+      this.updateTimers.delete(dbAddress);
+      const updates = pending;
+      pending = [];
+      if (updates.length === 0 || this.isShuttingDown) return;
+
+      const records = updates.map((entry) => ({
+        value: entry?.payload?.value ?? entry?.value ?? entry,
+      }));
+      this.rememberKnownDatabaseAddressesFromRecords(records);
+      const extracted = this.extractImageCids(records);
+      if (extracted.length > 0) {
+        this.logDiscoveredMediaCids(dbAddress, extracted, "updates");
+        this.enqueueImageCidsForPinning(extracted, dbAddress);
+      }
+
+      if (this.syncInFlight.has(dbAddress)) return;
+      this.recordSyncProof(
+        dbAddress,
+        await this.snapshotLocalStateAfterSync(db, {
+          updates,
+          didReceiveUpdate: true,
+        }),
+      );
+      await this.republishHeadsToSubscribers(
+        dbAddress,
+        db,
+        this.orbitDbNameByAddress.get(dbAddress) ?? db?.name ?? null,
+      );
+    };
+
+    const onUpdate = (entry: any) => {
+      if (entry) pending.push(entry);
+      if (this.updateTimers.has(dbAddress)) return;
+      const timer = setTimeout(() => {
+        flush().catch((error: any) => {
+          syncLog(
+            "Failed to handle updates of an open database:",
+            dbAddress,
+            error?.message || String(error),
+          );
+        });
+      }, HELD_OPEN_UPDATE_BATCH_MS);
+      timer.unref?.();
+      this.updateTimers.set(dbAddress, timer);
+    };
+
+    db.events.on("update", onUpdate);
+    this.eventHandlers.set(dbAddress, { db, onUpdate });
+  }
+
+  /** Detach {@link DatabaseService.watchDatabaseUpdates} from an address. */
+  private unwatchDatabaseUpdates(dbAddress: string): void {
+    const watcher = this.eventHandlers.get(dbAddress);
+    if (watcher) {
+      watcher.db?.events?.off?.("update", watcher.onUpdate);
+      this.eventHandlers.delete(dbAddress);
+    }
+    const timer = this.updateTimers.get(dbAddress);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      this.updateTimers.delete(dbAddress);
     }
   }
 
@@ -1035,6 +1172,7 @@ export class DatabaseService {
 
       try {
         aclDb = await this.preOpenAccessController(dbAddress, { manifest });
+        if (aclDb && aclDbAddress) this.watchDatabaseUpdates(aclDbAddress, aclDb);
         syncLog(
           "Opening database:",
           inspect(
@@ -1043,6 +1181,7 @@ export class DatabaseService {
           ),
         );
         db = await this.retainOpenDatabase(dbAddress);
+        this.watchDatabaseUpdates(dbAddress, db);
         if (options.requireFresh) {
           await this.reconnectKnownDatabasePeers(dbAddress);
         }
@@ -1180,25 +1319,7 @@ export class DatabaseService {
 
         this.metrics.trackSync("documents", "success");
         endTimer();
-        const existingPinned = this.pinnedDatabasesByAddress.get(dbAddress);
-        const shouldKeepExistingPositiveProof =
-          (existingPinned?.entryCount ?? 0) > 0 &&
-          (snapshot.entryCount == null || snapshot.entryCount === 0);
-        this.pinnedDatabasesByAddress.set(
-          dbAddress,
-          shouldKeepExistingPositiveProof
-            ? {
-                ...existingPinned!,
-                lastSyncedAt: new Date().toISOString(),
-              }
-            : {
-                address: dbAddress,
-                lastSyncedAt: new Date().toISOString(),
-                entryCount: snapshot.entryCount,
-                lastRecord: snapshot.lastRecord,
-                snapshotSource: snapshot.source,
-              },
-        );
+        this.recordSyncProof(dbAddress, snapshot);
         const hasReplicatedState =
           (snapshot.entryCount ?? 0) > 0 ||
           snapshot.lastRecord != null ||
@@ -1210,8 +1331,13 @@ export class DatabaseService {
           // notifications. Do not promote an early empty discovery pass: it
           // must be allowed to close and reopen once writer heads are present.
           this.pinnedOpenDatabases.set(dbAddress, db);
+          // Usually attached when the sync opened it; again here in case a
+          // concurrent sync, which used this database only as its access
+          // controller, detached it in the meantime.
+          this.watchDatabaseUpdates(dbAddress, db);
           if (aclDb && aclDbAddress) {
             this.pinnedOpenDatabases.set(aclDbAddress, aclDb);
+            this.watchDatabaseUpdates(aclDbAddress, aclDb);
           }
           if (receivedUpdate) {
             await this.republishHeadsToSubscribers(dbAddress, db, dbName);
@@ -1227,6 +1353,16 @@ export class DatabaseService {
           console.error("Failed to sync database:", err);
         }
       } finally {
+        if (!this.pinnedOpenDatabases.has(dbAddress)) {
+          this.unwatchDatabaseUpdates(dbAddress);
+        }
+        if (
+          aclDbAddress &&
+          aclDbAddress !== dbAddress &&
+          !this.pinnedOpenDatabases.has(aclDbAddress)
+        ) {
+          this.unwatchDatabaseUpdates(aclDbAddress);
+        }
         if (db && this.pinnedOpenDatabases.get(dbAddress) !== db) {
           await this.releaseOpenDatabase(dbAddress, db);
         }
@@ -2999,6 +3135,9 @@ export class DatabaseService {
     this.pinQueue.clear();
     await this.pinQueue.onIdle();
 
+    for (const dbAddress of [...this.eventHandlers.keys()]) {
+      this.unwatchDatabaseUpdates(dbAddress);
+    }
     this.pinnedOpenDatabases.clear();
     this.databaseUseCounts.clear();
 

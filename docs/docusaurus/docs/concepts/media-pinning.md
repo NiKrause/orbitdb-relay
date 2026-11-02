@@ -35,6 +35,11 @@ The event entrypoint is `src/events/handlers.ts`.
 
 Sync tasks call `DatabaseService.syncAllOrbitDBRecords(dbAddress)` in `src/services/database.ts`.
 
+Once a sync keeps a database open (it has replicated state), neither event queues another sync
+for it. OrbitDB replicates it natively, and a listener on the open database's `update` events,
+batched over 250 ms, extracts and pins media CIDs from new entries, refreshes the replication
+proof and re-announces heads to subscribers.
+
 ## Sync flow
 
 For each sync task:

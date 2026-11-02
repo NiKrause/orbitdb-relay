@@ -29,6 +29,15 @@ class FakePubsub extends EventTarget {
     this.subscribed.push(topic)
   }
 
+  /** A message on the topic, as a writer's heads broadcast arrives. */
+  publish(topic) {
+    this.dispatchEvent(
+      new CustomEvent('message', {
+        detail: { topic, data: new Uint8Array() },
+      }),
+    )
+  }
+
   announce(topic) {
     this.dispatchEvent(
       new CustomEvent('subscription-change', {
@@ -48,6 +57,7 @@ function createFakeDatabaseService() {
     syncStarts: [],
     prefetchedTopics: [],
     hangingPrefetches: new Set(),
+    heldOpen: new Set(),
   }
 
   return {
@@ -61,6 +71,7 @@ function createFakeDatabaseService() {
     },
     getCachedDbName: () => undefined,
     rememberDatabasePeer: () => {},
+    isHeldOpen: (topic) => state.heldOpen.has(topic),
     fetchManifestChain: async () => ({ held: true, blocks: [], dbName: null }),
     syncAllOrbitDBRecords: async (topic) => {
       state.syncStarts.push(topic)
@@ -326,6 +337,43 @@ describe('orbitdb topic sync queue', function () {
       'the sync to run while the prefetch hangs',
     )
     assert.deepEqual(databaseService.state.prefetchedTopics, [HEALTHY])
+  })
+
+  it('queues no sync for a database the relay holds open (#66)', async () => {
+    // OrbitDB replicates a database the relay holds open by itself. Every
+    // message on its topic used to queue another full sync regardless, and a
+    // busy database kept a slot from the ones the relay had not seen yet.
+    process.env.RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_TIMEOUT_MS = '10000'
+    process.env.RELAY_ORBITDB_SYNC_COOLDOWN_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS = '5000'
+
+    const OPEN = '/orbitdb/zdpuHeldOpenTodoList'
+    const pubsub = new FakePubsub()
+    const databaseService = createFakeDatabaseService()
+    databaseService.state.heldOpen.add(OPEN)
+
+    handlers = setupOrbitdbReplicationHandlers(
+      { services: { pubsub } },
+      databaseService,
+    )
+
+    for (let i = 0; i < 20; i++) {
+      pubsub.publish(OPEN)
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    pubsub.announce(OPEN)
+
+    // A database the relay does not hold open still syncs on a message.
+    pubsub.publish(HEALTHY)
+    await waitFor(
+      () => databaseService.state.syncedTopics.includes(HEALTHY),
+      3000,
+      'the database that is not held open to sync',
+    )
+
+    assert.deepEqual(databaseService.state.syncStarts, [HEALTHY])
+    assert.equal(handlers.getQueueStats().queuedTopics, 0)
   })
 
   it('names the topics currently holding a slot', async () => {
