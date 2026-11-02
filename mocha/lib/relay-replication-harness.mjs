@@ -22,11 +22,12 @@ import { noise } from '@chainsafe/libp2p-noise'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { identify } from '@libp2p/identify'
 import { ping } from '@libp2p/ping'
-import { circuitRelayTransport } from '@libp2p/circuit-relay-v2'
+import { circuitRelayTransport, circuitRelayServer } from '@libp2p/circuit-relay-v2'
 import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
 import { pubsubPeerDiscovery } from '@libp2p/pubsub-peer-discovery'
 import { tcp } from '@libp2p/tcp'
 import { webSockets } from '@libp2p/websockets'
+import { multiaddr } from '@multiformats/multiaddr'
 import { CID } from 'multiformats/cid'
 import { sha256, sha512 } from 'multiformats/hashes/sha2'
 import * as dagCbor from '@ipld/dag-cbor'
@@ -148,6 +149,58 @@ export const createClient = async (orbitdbDirectory) => {
   const ipfs = await createHeliaWithLibp2p(libp2p).start()
   const orbitdb = await createOrbitDB({ ipfs, directory: orbitdbDirectory })
   return { libp2p, ipfs, orbitdb }
+}
+
+/**
+ * A bare relay: libp2p with the OrbitDB replication service mounted and
+ * nothing else, so a test can reach `services.orbitdbReplication` directly.
+ */
+export const createRelayServiceNode = async ({ storageDir, wsPort, tcpPort }) => {
+  const [{ initializeStorage }, { orbitdbReplicationService }] = await Promise.all([
+    import('../../dist/services/storage.js'),
+    import('../../dist/index.js'),
+  ])
+
+  const storage = await initializeStorage(storageDir)
+  const libp2p = await createLibp2p({
+    privateKey: storage.privateKey,
+    datastore: storage.datastore,
+    addresses: {
+      listen: [`/ip4/127.0.0.1/tcp/${tcpPort}`, `/ip4/127.0.0.1/tcp/${wsPort}/ws`],
+    },
+    transports: [circuitRelayTransport(), tcp(), webSockets()],
+    connectionEncrypters: [noise()],
+    streamMuxers: [yamux()],
+    services: {
+      identify: identify(),
+      ping: ping(),
+      pubsub: gossipsub({ allowPublishToZeroTopicPeers: true }),
+      relay: circuitRelayServer(),
+      orbitdbReplication: orbitdbReplicationService({
+        datastore: storage.datastore,
+        blockstore: storage.blockstore,
+        orbitdbDirectory: join(storageDir, 'orbitdb'),
+      }),
+    },
+  })
+
+  return {
+    storage,
+    libp2p,
+    relayAddr: multiaddr(`/ip4/127.0.0.1/tcp/${wsPort}/ws`),
+  }
+}
+
+export const closeRelayServiceNode = async (node) => {
+  try {
+    await node.libp2p.stop()
+  } catch {}
+  try {
+    await node.storage.datastore.close()
+  } catch {}
+  try {
+    await node.storage.blockstore.close()
+  } catch {}
 }
 
 export const stopClient = async (client) => {

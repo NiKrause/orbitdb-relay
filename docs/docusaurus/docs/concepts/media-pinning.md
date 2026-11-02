@@ -27,8 +27,18 @@ The event entrypoint is `src/events/handlers.ts`.
 - Pubsub **`subscription-change`**:
   - Remember the subscribing peer as an in-memory hint for that OrbitDB topic.
   - For each topic starting with `/orbitdb/`, queue a normal sync task.
+- On the **first sight** of an `/orbitdb/` topic, from either event, the fast lane also fetches the
+  blocks a peer needs to open that database — its manifest and access-controller blocks — in a
+  queue of its own, so a new database is held within seconds even while full syncs fill the sync
+  queue. Each fetch logs `Fast lane held manifest chain` (or `could not fetch`) with `latencyMs`
+  from first sight.
 
 Sync tasks call `DatabaseService.syncAllOrbitDBRecords(dbAddress)` in `src/services/database.ts`.
+
+Once a sync keeps a database open (it has replicated state), neither event queues another sync
+for it. OrbitDB replicates it natively, and a listener on the open database's `update` events,
+batched over 250 ms, extracts and pins media CIDs from new entries, refreshes the replication
+proof and re-announces heads to subscribers.
 
 ## Sync flow
 
