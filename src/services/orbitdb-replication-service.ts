@@ -207,17 +207,24 @@ function createLibp2pServiceFacade(components: any): Libp2pFacade {
 }
 
 /**
- * Await `promise`, but give up after `timeoutMs` and reject instead.
+ * Await `value`, but give up after `timeoutMs` and reject instead.
  *
  * The underlying work is not cancellable, so it keeps running detached; only the
  * waiting stops. Its rejection is handled here so dropping it cannot surface as
  * an unhandled rejection.
+ *
+ * `value` need not be a promise. gossipsub 16's `subscribe()` returns
+ * `undefined`, and calling `.catch` on that threw a `TypeError` on every
+ * explicit subscribe from 0.10.7 on (#66). A plain value simply wins the race.
+ * (`DatabaseService.withTimeout` refuses non-thenables on purpose: there one
+ * means a generator was passed by mistake. Here it is the normal case.)
  */
 async function withDeadline<T>(
-  promise: Promise<T>,
+  value: T | PromiseLike<T>,
   timeoutMs: number,
   label: string,
 ): Promise<T> {
+  const promise = Promise.resolve(value);
   promise.catch(() => {});
   let timer: ReturnType<typeof setTimeout> | undefined;
   const expiry = new Promise<never>((_, reject) => {
@@ -309,23 +316,34 @@ export function setupOrbitdbReplicationHandlers(
         `pubsub subscribe for ${topic}`,
       );
       subscribedOrbitdbTopics.add(topic);
-      await databaseService.prefetchManifestForLogging(topic);
-      const dbName = databaseService.getCachedDbName(topic);
-      syncLog(
-        "Explicitly subscribed relay pubsub to OrbitDB topic:",
-        inspect(dbName ? { topic, dbName } : { topic }, {
-          depth: null,
-          colors: false,
-          compact: false,
-        }),
-      );
     } catch (error: any) {
       syncLog(
         "Failed to subscribe relay pubsub to OrbitDB topic:",
         topic,
         error?.message || String(error),
       );
+      return;
     }
+
+    // Not awaited: the prefetch only puts the name in this log line, and the
+    // sync that follows loads the same manifest as its first step. Awaiting it
+    // here would hold the slot twice over for a manifest nobody serves — 5 s
+    // in the prefetch, then 5 s again in the sync — and 0.10.10's CI logs show
+    // 5 to 19 such topics per suite.
+    void databaseService
+      .prefetchManifestForLogging(topic)
+      .catch(() => {})
+      .then(() => {
+        const dbName = databaseService.getCachedDbName(topic);
+        syncLog(
+          "Explicitly subscribed relay pubsub to OrbitDB topic:",
+          inspect(dbName ? { topic, dbName } : { topic }, {
+            depth: null,
+            colors: false,
+            compact: false,
+          }),
+        );
+      });
   };
 
   /**
