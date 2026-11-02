@@ -244,10 +244,15 @@ describe('manifest fast lane against a real OrbitDB client', function () {
     if (tempRoot) await rm(tempRoot, { recursive: true, force: true })
   })
 
-  it('lets a peer open a fresh database the relay knows only from the fast lane', async () => {
+  /**
+   * Alice creates two databases while both of the relay's sync slots are held
+   * by `takeSyncSlots`, then leaves; Bob, who can reach only the relay, opens
+   * both by address.
+   */
+  async function openFreshDatabasesThroughRelay(label, takeSyncSlots) {
     const wsPort = 26492 + Math.floor(Math.random() * 1000)
     const relay = await createRelayServiceNode({
-      storageDir: join(tempRoot, 'relay'),
+      storageDir: join(tempRoot, label, 'relay'),
       wsPort,
       tcpPort: wsPort - 1,
     })
@@ -267,18 +272,10 @@ describe('manifest fast lane against a real OrbitDB client', function () {
     let alice
     let bob
     try {
-      alice = await createClient(join(tempRoot, 'alice'))
+      alice = await createClient(join(tempRoot, label, 'alice'))
       await alice.libp2p.dial(relay.relayAddr)
 
-      // Two other databases take both sync slots first, as slow databases do
-      // on a loaded relay. Alice serves them on purpose. A manifest nobody
-      // serves would, today, also stall the relay's bitswap replies to Bob:
-      // bitswap's ledger reads through Helia's networked blockstore, so a
-      // wanted block the relay lacks holds back every block queued with it.
-      // That is a separate problem from the one tested here.
-      for (const name of ['slow-one', 'slow-two']) {
-        await alice.orbitdb.open(name, { type: 'keyvalue' })
-      }
+      await takeSyncSlots(alice)
       await waitFor(() => syncStarts.length === 2, 10000, 'both sync slots to be taken')
 
       const createdAt = Date.now()
@@ -316,7 +313,7 @@ describe('manifest fast lane against a real OrbitDB client', function () {
       await stopClient(alice)
       alice = undefined
 
-      bob = await createClient(join(tempRoot, 'bob'))
+      bob = await createClient(join(tempRoot, label, 'bob'))
       await bob.libp2p.dial(relay.relayAddr)
       for (const { address, name, acType } of databases) {
         const startedAt = Date.now()
@@ -339,5 +336,31 @@ describe('manifest fast lane against a real OrbitDB client', function () {
       if (alice) await stopClient(alice)
       await closeRelayServiceNode(relay)
     }
+  }
+
+  it('lets a peer open a fresh database the relay knows only from the fast lane', async () => {
+    // Two other databases take both sync slots first, as slow databases do
+    // on a loaded relay. Alice serves them.
+    await openFreshDatabasesThroughRelay('served-slot-holders', async (alice) => {
+      for (const name of ['slow-one', 'slow-two']) {
+        await alice.orbitdb.open(name, { type: 'keyvalue' })
+      }
+    })
+  })
+
+  it('serves that chain while the relay also wants manifests nobody serves', async () => {
+    // Two topics whose manifests nobody serves take both sync slots, so the
+    // relay wants those manifests from every peer, Bob included. Bob runs a
+    // stock `withBitswap` client, whose ledger fetches a wanted block through
+    // Helia's networked blockstore: he wants them back from the relay, in the
+    // same message as the access-controller block he needs. A relay ledger
+    // that read through the network as well waited on a manifest it will
+    // never get, and that block stayed unsent with it (#66).
+    await openFreshDatabasesThroughRelay('unserved-slot-holders', async (alice) => {
+      for (const name of ['nobody-serves-one', 'nobody-serves-two']) {
+        const block = await Block.encode({ value: { name }, codec: dagCbor, hasher: sha256 })
+        alice.libp2p.services.pubsub.subscribe(`/orbitdb/${block.cid.toString(base58btc)}`)
+      }
+    })
   })
 })

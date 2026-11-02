@@ -2310,8 +2310,15 @@ export class DatabaseService {
       // The deadline has to cover draining the blocks, not just obtaining the
       // generator that yields them: `blockstore.get()` returns a generator, and
       // the wait that actually matters happens inside `collectUint8Array`.
+      // The signal ends the want itself; without it a manifest nobody serves
+      // stayed on the relay's wantlist, sent to every peer, long after the
+      // timeout gave up on it.
       const bytes = await this.withTimeout(
-        collectUint8Array(this.ipfs.blockstore.get(cid)),
+        collectUint8Array(
+          this.ipfs.blockstore.get(cid, {
+            signal: AbortSignal.timeout(MANIFEST_LOAD_TIMEOUT_MS),
+          }),
+        ),
         MANIFEST_LOAD_TIMEOUT_MS,
         `OrbitDB manifest load for ${dbAddress}`,
       );
