@@ -120,6 +120,7 @@ const DelegatedTodoAccessController = (opts: { write?: string[] } = {}) =>
 
 const DEFERRED_ACL_PREFIX = "/orbitdb-deferred/";
 const ORBITDB_PREFIX = "/orbitdb/";
+const IPFS_PREFIX = "/ipfs/";
 const ORBITDB_HEADS_PREFIX = "/orbitdb/heads";
 const ON_DEMAND_HEADS_HANDLER_TIMEOUT_MS = 5000;
 const RELAY_ERROR_HANDLER_INSTALLED = Symbol("relayErrorHandlerInstalled");
@@ -130,6 +131,17 @@ const MANIFEST_LOAD_TIMEOUT_MS = 5_000;
 
 /** Deduped media CID plus which payload fields referenced it (for sync/pin logs). */
 export type ExtractedMediaCid = { cid: string; sources: string[] };
+/** Outcome of {@link DatabaseService.fetchManifestChain}. */
+export type ManifestChainResult = {
+  /** Every block `orbitdb.open()` needs is now in the blockstore. */
+  held: boolean;
+  /** CIDs of the blocks held so far, in chain order. */
+  blocks: string[];
+  /** The manifest `name`, once the manifest arrived. */
+  dbName: string | null;
+  /** Which block could not be had, and why, when `held` is false. */
+  failure?: { step: string; error: string };
+};
 /**
  * A shared in-flight operation keyed by database address, used to de-duplicate
  * concurrent opens and syncs. `startedAt` (epoch ms) lets callers detect a
@@ -478,6 +490,96 @@ export class DatabaseService {
       await this.loadManifest(dbAddress, { quiet: true });
     } catch {
       // ignore
+    }
+  }
+
+  /**
+   * Fetch, and so hold, the blocks a peer needs to `orbitdb.open()` this
+   * database by address. Once the relay holds them, bitswap serves them to a
+   * guest that wants them — including a want sent before they arrived.
+   *
+   * The chain, as OrbitDB 4 writes it:
+   *   1. the database manifest (its hash is the address);
+   *   2. its `accessController`: for `/ipfs/<cid>` that block; for an OrbitDB
+   *      controller (`/orbitdb/…`, `/orbitdb-deferred/…`) the controller
+   *      database's manifest, and then *its* `/ipfs/` block.
+   *
+   * Nothing here opens a database or waits on one, so it can run beside the
+   * sync queue without taking a slot (#66). Every block is bounded by
+   * `blockTimeoutMs`, and the want is cancelled when that runs out.
+   *
+   * @param dbAddress - The `/orbitdb/` address whose chain to fetch.
+   * @param options - `blockTimeoutMs` per block (default 5000); `signal`
+   * aborts the whole fetch, e.g. on shutdown.
+   * @returns What was held, and which step failed if not everything was.
+   */
+  async fetchManifestChain(
+    dbAddress: string,
+    options: { blockTimeoutMs?: number; signal?: AbortSignal } = {},
+  ): Promise<ManifestChainResult> {
+    const blockTimeoutMs = options.blockTimeoutMs ?? MANIFEST_LOAD_TIMEOUT_MS;
+    const blocks: string[] = [];
+    let dbName: string | null = null;
+    let step = "manifest";
+
+    const fetchBlock = async (hash: string): Promise<any> => {
+      const cid = CID.parse(hash, base58btc);
+      const deadline = AbortSignal.timeout(blockTimeoutMs);
+      const signal =
+        options.signal != null
+          ? AbortSignal.any([options.signal, deadline])
+          : deadline;
+      const bytes = await this.withTimeout(
+        collectUint8Array(this.ipfs.blockstore.get(cid, { signal })),
+        blockTimeoutMs,
+        `${step} for ${dbAddress}`,
+      );
+      const { value } = await Block.decode({
+        bytes,
+        codec: dagCbor,
+        hasher: sha256,
+      });
+      blocks.push(cid.toString());
+      return value;
+    };
+
+    try {
+      const manifest = await fetchBlock(parseAddress(dbAddress).hash);
+      if (typeof manifest?.name === "string" && manifest.name) {
+        dbName = manifest.name;
+        this.orbitDbNameByAddress.set(dbAddress, manifest.name);
+      }
+
+      let accessController: unknown = manifest?.accessController;
+      const controllerDb = this.normalizeOrbitdbAccessAddress(
+        typeof accessController === "string" ? accessController : null,
+      );
+      if (controllerDb) {
+        step = "access-controller manifest";
+        const controllerManifest = await fetchBlock(
+          parseAddress(controllerDb).hash,
+        );
+        accessController = controllerManifest?.accessController;
+      }
+
+      step = "access-controller block";
+      if (
+        typeof accessController !== "string" ||
+        !accessController.startsWith(IPFS_PREFIX)
+      ) {
+        throw new Error(
+          `no /ipfs/ access controller to fetch: ${String(accessController)}`,
+        );
+      }
+      await fetchBlock(accessController.slice(IPFS_PREFIX.length));
+      return { held: true, blocks, dbName };
+    } catch (error: any) {
+      return {
+        held: false,
+        blocks,
+        dbName,
+        failure: { step, error: error?.message || String(error) },
+      };
     }
   }
 

@@ -54,3 +54,31 @@ export function getOrbitdbTopicSyncMaxCooldownMs(): number {
 export function getOrbitdbSubscribeTimeoutMs(): number {
   return envInt('RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS', DEFAULT_ORBITDB_SUBSCRIBE_TIMEOUT_MS)
 }
+
+/**
+ * The fast lane (#66): on first sight of a topic, fetch the blocks a peer needs
+ * to `orbitdb.open()` it — the manifest and its access controller — outside
+ * the sync queue. A guest opening somebody else's fresh list gives up after
+ * OrbitDB's 30 s block timeout, and the queue alone held new lists ~52 s late.
+ */
+
+/** Chain fetches run at once. Each is a handful of bounded block fetches. */
+export const DEFAULT_ORBITDB_FAST_LANE_CONCURRENCY = 8
+
+/** How long one block of the chain may take before the fetch gives up. */
+export const DEFAULT_ORBITDB_FAST_LANE_BLOCK_TIMEOUT_MS = 5000
+
+/** How soon a topic whose chain could not be fetched may be tried again. */
+export const DEFAULT_ORBITDB_FAST_LANE_RETRY_MS = 30000
+
+export function getOrbitdbFastLaneConcurrency(): number {
+  return Math.max(1, envInt('RELAY_ORBITDB_FAST_LANE_CONCURRENCY', DEFAULT_ORBITDB_FAST_LANE_CONCURRENCY))
+}
+
+export function getOrbitdbFastLaneBlockTimeoutMs(): number {
+  return envInt('RELAY_ORBITDB_FAST_LANE_BLOCK_TIMEOUT_MS', DEFAULT_ORBITDB_FAST_LANE_BLOCK_TIMEOUT_MS)
+}
+
+export function getOrbitdbFastLaneRetryMs(): number {
+  return envInt('RELAY_ORBITDB_FAST_LANE_RETRY_MS', DEFAULT_ORBITDB_FAST_LANE_RETRY_MS)
+}

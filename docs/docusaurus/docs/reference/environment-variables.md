@@ -102,6 +102,9 @@ Read in `src/services/metrics.ts` and `src/http/pinning-http.ts`. See the
 | `RELAY_ORBITDB_SYNC_TIMEOUT_MS` | `120000` | How long a pubsub-triggered topic sync may hold one of the sync queue's two slots. |
 | `RELAY_ORBITDB_SYNC_COOLDOWN_MS` | `60000` | How long a topic is kept out of the sync queue after its sync timed out or failed. Doubles on each further setback. |
 | `RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS` | `900000` (15 min) | Ceiling for that doubling cooldown. |
+| `RELAY_ORBITDB_FAST_LANE_CONCURRENCY` | `8` | How many manifest-chain fetches the fast lane runs at once. On first sight of an `/orbitdb/` topic the relay fetches the blocks a peer needs to open that database (manifest and access controller) outside the sync queue. |
+| `RELAY_ORBITDB_FAST_LANE_BLOCK_TIMEOUT_MS` | `5000` | How long one block of that chain may take before the fetch gives up and cancels its want. |
+| `RELAY_ORBITDB_FAST_LANE_RETRY_MS` | `30000` | How soon a topic whose chain could not be fetched is tried again, on a later sighting. A held chain is never fetched again. |
 
 ### Deployed-mode indicators
 

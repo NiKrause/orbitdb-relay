@@ -61,6 +61,7 @@ function createFakeDatabaseService() {
     },
     getCachedDbName: () => undefined,
     rememberDatabasePeer: () => {},
+    fetchManifestChain: async () => ({ held: true, blocks: [], dbName: null }),
     syncAllOrbitDBRecords: async (topic) => {
       state.syncStarts.push(topic)
       if (state.hangingTopics.has(topic)) {
