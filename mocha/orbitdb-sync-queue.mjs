@@ -16,10 +16,15 @@ class FakePubsub extends EventTarget {
     this.hangingSubscribes = new Set()
   }
 
-  async subscribe(topic) {
+  // Synchronous and returning `undefined`, as `@libp2p/gossipsub` 16 does. This
+  // fake used to be `async`, which is why nothing caught #66: `withDeadline`
+  // called `.catch` on the return value and threw on the real one.
+  subscribe(topic) {
     if (this.hangingSubscribes.has(topic)) {
-      // No abort path, exactly like the real gossipsub call that hung.
-      await new Promise(() => {})
+      // A pubsub that hands back a promise and never settles it. Not gossipsub
+      // 16, but `pubsub` is untyped at the call site, and this is the case the
+      // subscribe deadline is there for.
+      return new Promise(() => {})
     }
     this.subscribed.push(topic)
   }
@@ -41,11 +46,19 @@ function createFakeDatabaseService() {
     hangingTopics: new Set(),
     syncedTopics: [],
     syncStarts: [],
+    prefetchedTopics: [],
+    hangingPrefetches: new Set(),
   }
 
   return {
     state,
-    prefetchManifestForLogging: async () => {},
+    prefetchManifestForLogging: async (topic) => {
+      state.prefetchedTopics.push(topic)
+      if (state.hangingPrefetches.has(topic)) {
+        // A manifest nobody serves; the real one gives up after 5 s.
+        await new Promise(() => {})
+      }
+    },
     getCachedDbName: () => undefined,
     rememberDatabasePeer: () => {},
     syncAllOrbitDBRecords: async (topic) => {
@@ -244,6 +257,74 @@ describe('orbitdb topic sync queue', function () {
       'the sync to run despite a hanging subscribe',
     )
     assert.equal(handlers.getQueueStats().timedOutSyncs, 0)
+  })
+
+  it('subscribes a new topic once and prefetches its manifest (#66)', async () => {
+    // gossipsub 16's subscribe returns `undefined`. From 0.10.7 the relay called
+    // `.catch` on that and threw, so every explicit subscribe failed: the topic
+    // never reached the subscribed set, the manifest prefetch never ran, and
+    // each later sync of the topic subscribed — and failed — all over again.
+    process.env.RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_TIMEOUT_MS = '10000'
+    process.env.RELAY_ORBITDB_SYNC_COOLDOWN_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS = '5000'
+
+    const pubsub = new FakePubsub()
+    const databaseService = createFakeDatabaseService()
+
+    handlers = setupOrbitdbReplicationHandlers(
+      { services: { pubsub } },
+      databaseService,
+    )
+
+    pubsub.announce(HEALTHY)
+    await waitFor(
+      () => databaseService.state.syncedTopics.length === 1,
+      3000,
+      'the first sync',
+    )
+    await waitFor(
+      () => databaseService.state.prefetchedTopics.includes(HEALTHY),
+      3000,
+      'the manifest prefetch',
+    )
+
+    // Announced again: the sync runs again, the subscribe does not.
+    pubsub.announce(HEALTHY)
+    await waitFor(
+      () => databaseService.state.syncedTopics.length === 2,
+      3000,
+      'the second sync',
+    )
+    assert.deepEqual(pubsub.subscribed, [HEALTHY])
+    assert.deepEqual(databaseService.state.prefetchedTopics, [HEALTHY])
+  })
+
+  it('does not hold the slot for the logging prefetch', async () => {
+    // The prefetch only names the topic in a log line, and the sync loads the
+    // same manifest first thing. Awaited, a manifest nobody serves would cost
+    // the slot its timeout twice.
+    process.env.RELAY_ORBITDB_SUBSCRIBE_TIMEOUT_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_TIMEOUT_MS = '10000'
+    process.env.RELAY_ORBITDB_SYNC_COOLDOWN_MS = '5000'
+    process.env.RELAY_ORBITDB_SYNC_MAX_COOLDOWN_MS = '5000'
+
+    const pubsub = new FakePubsub()
+    const databaseService = createFakeDatabaseService()
+    databaseService.state.hangingPrefetches.add(HEALTHY)
+
+    handlers = setupOrbitdbReplicationHandlers(
+      { services: { pubsub } },
+      databaseService,
+    )
+
+    pubsub.announce(HEALTHY)
+    await waitFor(
+      () => databaseService.state.syncedTopics.includes(HEALTHY),
+      1000,
+      'the sync to run while the prefetch hangs',
+    )
+    assert.deepEqual(databaseService.state.prefetchedTopics, [HEALTHY])
   })
 
   it('names the topics currently holding a slot', async () => {
