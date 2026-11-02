@@ -108,6 +108,7 @@ Event wiring in `src/events/handlers.ts`:
   - If `msg.topic` starts with `/orbitdb/`, enqueue a sync task (concurrency 2).
 - On pubsub `subscription-change` events:
   - For each subscription where `subscription.topic` starts with `/orbitdb/`, enqueue a sync task.
+- On first sight of an `/orbitdb/` topic (either event), the **fast lane** fetches its manifest chain outside the sync queue: `DatabaseService.fetchManifestChain()` — the manifest, its `/ipfs/` access-controller block, and for an OrbitDB access controller that database's manifest and its `/ipfs/` block. Its own queue (concurrency 8), 5 s per block, logged as `Fast lane held manifest chain` with `latencyMs` from first sight. It is all a peer needs for `orbitdb.open(address)` (#66).
 
 Sync implementation in `DatabaseService.syncAllOrbitDBRecords(dbAddress: string)`:
 

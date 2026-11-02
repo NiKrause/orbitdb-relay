@@ -13,6 +13,9 @@ import type { Blockstore } from "interface-blockstore";
 import type { Datastore } from "interface-datastore";
 
 import {
+  getOrbitdbFastLaneBlockTimeoutMs,
+  getOrbitdbFastLaneConcurrency,
+  getOrbitdbFastLaneRetryMs,
   getOrbitdbSubscribeTimeoutMs,
   getOrbitdbTopicSyncCooldownMs,
   getOrbitdbTopicSyncMaxCooldownMs,
@@ -295,9 +298,98 @@ export function setupOrbitdbReplicationHandlers(
   const syncTimeoutMs = getOrbitdbTopicSyncTimeoutMs();
   const syncCooldownMs = getOrbitdbTopicSyncCooldownMs();
   const syncMaxCooldownMs = getOrbitdbTopicSyncMaxCooldownMs();
+  /**
+   * The fast lane: a queue of its own for fetching a new topic's manifest
+   * chain, so finding a database never waits behind full syncs (#66). Its
+   * items are a few bounded block fetches, so they cannot hold it for long.
+   */
+  const fastLaneQueue = new PQueue({
+    concurrency: getOrbitdbFastLaneConcurrency(),
+  });
+  const fastLaneBlockTimeoutMs = getOrbitdbFastLaneBlockTimeoutMs();
+  const fastLaneRetryMs = getOrbitdbFastLaneRetryMs();
+  const fastLaneAbort = new AbortController();
+  /** Topic -> first sight and how its chain fetch went. */
+  const fastLaneTopics = new Map<
+    string,
+    {
+      firstSeenAt: number;
+      attempts: number;
+      state: "pending" | "held" | "failed";
+      settledAt: number;
+    }
+  >();
   const pubsub = libp2p.services.pubsub as any;
   let isShuttingDown = false;
   let timedOutSyncs = 0;
+
+  /**
+   * On first sight of a topic, fetch the blocks a peer needs to open its
+   * database: the manifest and its access controller. A topic whose chain
+   * could not be had is tried again on a later sighting, after
+   * `fastLaneRetryMs`; one that is held is never fetched again.
+   *
+   * Logs the time from first sight to chain held, so a CI log shows how long
+   * the relay took to learn each database without matching it against
+   * browser output.
+   */
+  const fetchManifestChainOnFirstSight = (topic: string) => {
+    if (!topic?.startsWith("/orbitdb/")) return;
+    const now = Date.now();
+    const known = fastLaneTopics.get(topic);
+    if (
+      known !== undefined &&
+      (known.state !== "failed" || now - known.settledAt < fastLaneRetryMs)
+    ) {
+      return;
+    }
+
+    const entry = {
+      firstSeenAt: known?.firstSeenAt ?? now,
+      attempts: (known?.attempts ?? 0) + 1,
+      state: "pending" as "pending" | "held" | "failed",
+      settledAt: 0,
+    };
+    fastLaneTopics.set(topic, entry);
+    fastLaneQueue
+      .add(async () => {
+        if (isShuttingDown) return;
+        const startedAt = Date.now();
+        const result = await databaseService.fetchManifestChain(topic, {
+          blockTimeoutMs: fastLaneBlockTimeoutMs,
+          signal: fastLaneAbort.signal,
+        });
+        entry.state = result.held ? "held" : "failed";
+        entry.settledAt = Date.now();
+        if (isShuttingDown) return;
+        syncLog(
+          result.held
+            ? "Fast lane held manifest chain:"
+            : "Fast lane could not fetch manifest chain:",
+          inspect(
+            {
+              topic,
+              ...(result.dbName ? { dbName: result.dbName } : {}),
+              latencyMs: entry.settledAt - entry.firstSeenAt,
+              queuedMs: startedAt - now,
+              attempt: entry.attempts,
+              blocks: result.blocks.length,
+              ...(result.failure ? { failure: result.failure } : {}),
+            },
+            { depth: null, colors: false, compact: false },
+          ),
+        );
+      })
+      .catch((error: any) => {
+        entry.state = "failed";
+        entry.settledAt = Date.now();
+        syncLog(
+          "Fast lane manifest fetch failed:",
+          topic,
+          error?.message || String(error),
+        );
+      });
+  };
 
   const ensureOrbitdbTopicSubscribed = async (topic: string) => {
     if (!topic?.startsWith("/orbitdb/")) return;
@@ -451,6 +543,7 @@ export function setupOrbitdbReplicationHandlers(
       );
     }
     if (msg.topic?.startsWith("/orbitdb/")) {
+      fetchManifestChainOnFirstSight(msg.topic);
       scheduleOrbitdbTopicSync(msg.topic);
     }
   };
@@ -469,6 +562,7 @@ export function setupOrbitdbReplicationHandlers(
               event.detail.peerId,
             );
           }
+          fetchManifestChainOnFirstSight(subscription.topic);
           scheduleOrbitdbTopicSync(subscription.topic);
         }
       }
@@ -514,10 +608,13 @@ export function setupOrbitdbReplicationHandlers(
       );
       syncQueue.pause();
       syncQueue.clear();
+      fastLaneQueue.pause();
+      fastLaneQueue.clear();
+      fastLaneAbort.abort();
       // Cleared tasks never reach their `finally`, so drop their markers here.
       queuedOrbitdbSyncTopics.clear();
       activeSyncStartedAt.clear();
-      await syncQueue.onIdle();
+      await Promise.all([syncQueue.onIdle(), fastLaneQueue.onIdle()]);
     },
   };
 }
