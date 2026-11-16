@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@febef9b4aeea6d78f039932b5e72fedb33235455
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@7ba866f99c6c8ae64a4af6cc2aa21780a64e5fea
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
@@ -68,7 +68,7 @@ jobs:
       # the image builders listed in ATTEST_RELAY_BUILDER_ROOTHASHES larger limits
       # per connection, and the list is baked into the image. Swap for the next
       # tag once it is cut.
-      tooling_ref: febef9b4aeea6d78f039932b5e72fedb33235455
+      tooling_ref: 7ba866f99c6c8ae64a4af6cc2aa21780a64e5fea
       rootfs_upload_driver: aleph-api-ipfs
       rootfs_require_processed_store: true
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
