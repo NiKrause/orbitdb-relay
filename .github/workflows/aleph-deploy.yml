@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@7ba866f99c6c8ae64a4af6cc2aa21780a64e5fea
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@a8485e2c6f5cd8e793dddbeaa0965c9792abb9fa
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
@@ -64,11 +64,11 @@ jobs:
       # repository variable, not a secret. Empty keeps the defaults for every VM.
       attest_relay_builder_roothashes: ${{ vars.ATTEST_RELAY_BUILDER_ROOTHASHES || '' }}
       tooling_repository: NiKrause/relay-button
-      # relay-button main after #230-#232 and #239 (no release yet): the attest relay gives
+      # relay-button main after #230-#232, #239 and #241 (no release yet): the attest relay gives
       # the image builders listed in ATTEST_RELAY_BUILDER_ROOTHASHES larger limits
       # per connection, and the list is baked into the image. Swap for the next
       # tag once it is cut.
-      tooling_ref: 7ba866f99c6c8ae64a4af6cc2aa21780a64e5fea
+      tooling_ref: a8485e2c6f5cd8e793dddbeaa0965c9792abb9fa
       rootfs_upload_driver: aleph-api-ipfs
       rootfs_require_processed_store: true
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
