@@ -55,7 +55,7 @@ permissions:
 
 jobs:
   build-rootfs:
-    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@b0962418701cbf34d560d3005a3538c4336c4b87
+    uses: NiKrause/relay-button/.github/workflows/aleph-rootfs-build-publish-deploy.yml@febef9b4aeea6d78f039932b5e72fedb33235455
     with:
       profile: orbitdb-relay
       rootfs_contract_path: aleph/contract.json
@@ -64,11 +64,11 @@ jobs:
       # repository variable, not a secret. Empty keeps the defaults for every VM.
       attest_relay_builder_roothashes: ${{ vars.ATTEST_RELAY_BUILDER_ROOTHASHES || '' }}
       tooling_repository: NiKrause/relay-button
-      # relay-button main after #230-#232 (no release yet): the attest relay gives
+      # relay-button main after #230-#232 and #239 (no release yet): the attest relay gives
       # the image builders listed in ATTEST_RELAY_BUILDER_ROOTHASHES larger limits
       # per connection, and the list is baked into the image. Swap for the next
       # tag once it is cut.
-      tooling_ref: b0962418701cbf34d560d3005a3538c4336c4b87
+      tooling_ref: febef9b4aeea6d78f039932b5e72fedb33235455
       rootfs_upload_driver: aleph-api-ipfs
       rootfs_require_processed_store: true
       publish: ${{ github.event_name == 'workflow_dispatch' && inputs.publish || false }}
@@ -98,3 +98,7 @@ jobs:
     secrets:
       ALEPH_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
       VM_SSH_PUBLIC_KEY: ${{ secrets.SSH_PUBLIC_KEY }}
+      # The deploy account also owns the relay: it signs the owner authorization,
+      # so the relay's bootstrap posts name ownerAddress. paperless-anywhere and
+      # simple-todo only trust relays whose owner is a Le Space account.
+      ALEPH_VM_BOOTSTRAP_OWNER_PRIVATE_KEY: ${{ secrets.ALEPH_PRIVATE_KEY }}
