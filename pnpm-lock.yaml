@@ -11,6 +11,7 @@ overrides:
   '@libp2p/gossipsub': 16.1.0
   '@peculiar/asn1-schema': 2.8.0
   '@peculiar/asn1-x509': 2.8.0
+  '@libp2p/crypto': 5.1.22
 
 importers:
 
@@ -62,8 +63,8 @@ importers:
         specifier: ^4.2.9
         version: 4.2.9
       '@libp2p/crypto':
-        specifier: ^5.1.21
-        version: 5.1.21
+        specifier: 5.1.22
+        version: 5.1.22
       '@libp2p/dcutr':
         specifier: ^3.0.24
         version: 3.0.24
@@ -627,8 +628,8 @@ packages:
   '@libp2p/config@1.1.34':
     resolution: {integrity: sha512-av0PNvJBTTwHxC1wFsjyvPuwHsE7mZOm0sQ7n0wKC5ONW/HfgGrpSiffjuPnDixJd3A/MkVNq5ycaQeM44Nb6Q==}
 
-  '@libp2p/crypto@5.1.21':
-    resolution: {integrity: sha512-GipsBinthJuk7DpwthTUixZHSaKogcxm2glPCP0VkYkEpzZrfEvBEekRvlP5+1Ak8pReaHcz4gPKFA9X6MG0WQ==}
+  '@libp2p/crypto@5.1.22':
+    resolution: {integrity: sha512-yVk4BefSiEz044kjsiLSEoJTbhRoyamqx4kFI9LnX8/asr4wnqDWKTXcn6mSx/RVNEzmDO70l3vOvcMCl4aLCQ==}
 
   '@libp2p/dcutr@3.0.24':
     resolution: {integrity: sha512-cCAVxFH+NVqRxSUsA4Ha/e+LMjnvwSQHKIHUjj9QleSJMqCENZkF9gZnA3DDqmb2xxK34PdInrGveURlV5RmsQ==}
@@ -3338,7 +3339,7 @@ snapshots:
     dependencies:
       '@chainsafe/as-chacha20poly1305': 0.1.0
       '@chainsafe/as-sha256': 1.2.4
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/peer-id': 6.0.12
       '@libp2p/utils': 7.3.0
@@ -3373,7 +3374,7 @@ snapshots:
 
   '@chainsafe/libp2p-quic@2.1.1':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/peer-id': 6.0.12
       '@libp2p/utils': 7.3.0
@@ -3669,7 +3670,7 @@ snapshots:
   '@ipshipyard/libp2p-auto-tls@2.0.2':
     dependencies:
       '@chainsafe/is-ip': 2.1.0
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/http': 2.0.6
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.10
@@ -3821,7 +3822,7 @@ snapshots:
       '@ipld/dag-cbor': 10.0.1
       '@ipld/dag-ucan': 3.4.5
       '@le-space/ucanto-principal': 9.1.2
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/logger': 6.2.11
       '@orbitdb/core': 4.0.0
       '@simplewebauthn/browser': 13.3.0
@@ -3875,7 +3876,7 @@ snapshots:
 
   '@libp2p/circuit-relay-v2@4.2.9':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.9
       '@libp2p/peer-collections': 7.0.24
@@ -3896,13 +3897,13 @@ snapshots:
 
   '@libp2p/config@1.1.34':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/keychain': 6.1.4
       '@libp2p/logger': 6.2.10
       interface-datastore: 10.0.1
 
-  '@libp2p/crypto@5.1.21':
+  '@libp2p/crypto@5.1.22':
     dependencies:
       '@libp2p/interface': 3.2.5
       '@noble/curves': 2.0.1
@@ -3925,7 +3926,7 @@ snapshots:
 
   '@libp2p/gossipsub@16.1.0':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.10
       '@libp2p/peer-id': 6.0.13
@@ -3949,7 +3950,7 @@ snapshots:
 
   '@libp2p/http-peer-id-auth@2.0.3':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/peer-id': 6.0.13
       uint8-varint: 3.0.0
@@ -3998,7 +3999,7 @@ snapshots:
 
   '@libp2p/identify@4.1.10':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.9
       '@libp2p/peer-id': 6.0.12
@@ -4038,7 +4039,7 @@ snapshots:
 
   '@libp2p/kad-dht@16.4.0':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.9
       '@libp2p/peer-collections': 7.0.24
@@ -4072,7 +4073,7 @@ snapshots:
 
   '@libp2p/keychain@6.1.4':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@noble/hashes': 2.0.1
       asn1js: 3.0.7
@@ -4142,21 +4143,21 @@ snapshots:
 
   '@libp2p/peer-id@6.0.12':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       multiformats: 14.0.3
       uint8arrays: 6.1.1
 
   '@libp2p/peer-id@6.0.13':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       multiformats: 14.0.3
       uint8arrays: 6.1.1
 
   '@libp2p/peer-record@9.0.13':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/peer-id': 6.0.12
       '@multiformats/multiaddr': 13.0.3
@@ -4168,7 +4169,7 @@ snapshots:
 
   '@libp2p/peer-store@12.0.24':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/peer-collections': 7.0.24
       '@libp2p/peer-id': 6.0.12
@@ -4199,7 +4200,7 @@ snapshots:
 
   '@libp2p/pubsub-peer-discovery@12.0.0':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.9
       '@libp2p/peer-id': 6.0.12
@@ -4227,7 +4228,7 @@ snapshots:
 
   '@libp2p/tls@3.1.6':
     dependencies:
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/peer-id': 6.0.12
       '@libp2p/utils': 7.3.0
@@ -4315,7 +4316,7 @@ snapshots:
     dependencies:
       '@chainsafe/is-ip': 2.1.0
       '@chainsafe/libp2p-noise': 17.0.0
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.9
       '@libp2p/keychain': 6.1.4
@@ -4464,7 +4465,7 @@ snapshots:
   '@orbitdb/core@4.0.0':
     dependencies:
       '@ipld/dag-cbor': 9.2.6
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       any-signal: 4.2.0
       it-pipe: 3.0.1
       level: 10.0.0
@@ -6028,7 +6029,7 @@ snapshots:
     dependencies:
       '@chainsafe/is-ip': 2.1.0
       '@chainsafe/netmask': 2.0.0
-      '@libp2p/crypto': 5.1.21
+      '@libp2p/crypto': 5.1.22
       '@libp2p/interface': 3.2.5
       '@libp2p/interface-internal': 3.1.9
       '@libp2p/logger': 6.2.10
