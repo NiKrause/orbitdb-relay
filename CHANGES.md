@@ -1,12 +1,19 @@
 # Changes
 
-## Unreleased
+## v0.11.0
 
-- Depends on `@le-space/orbitdb-access-controller-decontact`; `deploy/orbitdb-relay.env.example` (and so the Aleph image) names it in `RELAY_ACCESS_CONTROLLERS`, so the relay replicates deContact address books.
-- Limits per client by its own IP, also behind the proxy on the same machine (`X-Forwarded-For`, taken from a loopback peer only): new and open WebSocket connections, and the HTTP routes that do work on request (`/pinning/sync`, `/pinning/has-entry`, `/ipfs/*`), answered `429` over them. libp2p's limits per host, which behind the proxy count all browsers as one, are raised and configurable (`src/services/client-limits.ts`, environment variables in the reference).
+First npm release since 0.10.11; it also carries what was tagged as 0.10.12 but never published.
+
+### Apps' own access controllers
+- Added `RELAY_ACCESS_CONTROLLERS` and an `accessControllers` option (`startRelay`, `orbitdbReplicationService`) to register an app's own OrbitDB access controllers next to the built-in ones, so the relay can replicate databases that use them. Modules are loaded from local paths or installed packages only; a configured type cannot replace a built-in one. (#84)
+- Depends on `@le-space/orbitdb-access-controller-decontact`; `deploy/orbitdb-relay.env.example` (and so the Aleph image) names it in `RELAY_ACCESS_CONTROLLERS`, so the relay replicates deContact address books. (#85)
+
+### Limits and fixes
+- Limits per client by its own IP, also behind the proxy on the same machine (`X-Forwarded-For`, taken from a loopback peer only): new and open WebSocket connections, and the HTTP routes that do work on request (`/pinning/sync`, `/pinning/has-entry`, `/ipfs/*`), answered `429` over them. libp2p's limits per host, which behind the proxy count all browsers as one, are raised and configurable (`src/services/client-limits.ts`, environment variables in the reference). (#81)
 - A circuit relay reservation is released when its peer disconnects, instead of staying for its whole TTL (#47).
 - Coverage in `mocha/client-limits.mjs`.
-- Added `RELAY_ACCESS_CONTROLLERS` and an `accessControllers` option (`startRelay`, `orbitdbReplicationService`) to register an app's own OrbitDB access controllers next to the built-in ones, so the relay can replicate databases that use them. Modules are loaded from local paths or installed packages only; a configured type cannot replace a built-in one.
+- A database is no longer closed while heads for it are still being received (#82).
+- Per-database `/orbitdb/heads/*` protocols are answered on demand without being announced in Identify, which keeps the Identify message small (#83).
 
 ## v0.10.0
 
