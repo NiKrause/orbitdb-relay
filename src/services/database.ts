@@ -134,6 +134,22 @@ const MANIFEST_LOAD_TIMEOUT_MS = 5_000;
  * per entry.
  */
 const HELD_OPEN_UPDATE_BATCH_MS = 250;
+/**
+ * Longest the relay keeps a database open past the point where it would have
+ * closed it, while heads for it are still on their way. See
+ * {@link DatabaseService.hasHeadsInFlight}.
+ */
+const HEADS_IN_FLIGHT_MAX_WAIT_MS = 15_000;
+/**
+ * How long nothing may be in flight before an on-demand open counts as
+ * settled. Covers an exchange whose dial is under way but has no stream yet:
+ * the relay's subscription, which the open brought, is what makes other
+ * subscribers dial it.
+ */
+const HEADS_IN_FLIGHT_QUIET_MS = 300;
+
+/** Joins a database's log has running, as counted by {@link DatabaseService.trackJoins}. */
+type JoinActivity = { inFlight: number; lastActivityAt: number };
 
 /** Deduped media CID plus which payload fields referenced it (for sync/pin logs). */
 export type ExtractedMediaCid = { cid: string; sources: string[] };
@@ -305,6 +321,8 @@ export class DatabaseService {
   orbitDbNameByAddress: Map<string, string>;
   /** Peers observed subscribing to a native OrbitDB database topic. */
   knownDatabasePeers: Map<string, Map<string, unknown>>;
+  /** Joins running on each open database's log, keyed by the log. */
+  private readonly joinActivity = new WeakMap<object, JoinActivity>();
 
   /**
    * Initialize all in-memory bookkeeping (metrics server, the caches/maps for
@@ -752,10 +770,20 @@ export class DatabaseService {
    *
    * A browser reconnecting after downtime dials `/orbitdb/heads/<address>` to
    * pull the latest heads. The relay may not have that database open, so this
-   * method (re)opens it just long enough to serve the request: it ensures a
-   * connection back to the requesting peer, retains the database open, waits
-   * for OrbitDB to register the real heads-protocol handler, invokes it, and
-   * always releases the database afterward.
+   * method (re)opens it to serve the request: it ensures a connection back to
+   * the requesting peer, retains the database open, waits for OrbitDB to
+   * register the real heads-protocol handler and invokes it.
+   *
+   * The open does not end with that exchange. It subscribes the relay to the
+   * database's topic, and the subscribers dial their own exchanges, which
+   * OrbitDB's handler takes while this one is still running. A head that
+   * arrives on one of them after the database closed is joined against a
+   * closed log and lost, and the peer that sent it does not send it again.
+   * So the database stays open until nothing is in flight any more
+   * ({@link DatabaseService.waitForHeadsInFlight}). If it then holds entries,
+   * it is handled like a sync pass that received updates
+   * ({@link DatabaseService.holdOnDemandDatabaseIfReplicated}); otherwise it
+   * is released.
    *
    * @param protocol - The dialed heads protocol id (must map to a known DB).
    * @param context - The stream and its connection, as libp2p 3 hands them to
@@ -780,15 +808,106 @@ export class DatabaseService {
     await this.ensurePeerConnection(context?.connection?.remotePeer);
 
     const db = await this.retainOpenDatabase(dbAddress);
+    const updates: any[] = [];
+    const onUpdate = (entry: any) => {
+      if (entry) updates.push(entry);
+    };
+    db?.events?.on?.("update", onUpdate);
+    let heldOpen = false;
     try {
-      const handlerRecord = await this.waitForRegisteredHeadsHandler(
-        protocol,
-        getRegisteredHandler,
-      );
-      await handlerRecord.handler(context.stream, context.connection);
+      try {
+        const handlerRecord = await this.waitForRegisteredHeadsHandler(
+          protocol,
+          getRegisteredHandler,
+        );
+        await handlerRecord.handler(context.stream, context.connection);
+      } finally {
+        await this.waitForHeadsInFlight(dbAddress, db, {
+          ignoreStream: context.stream,
+          quietMs: HEADS_IN_FLIGHT_QUIET_MS,
+        });
+        heldOpen = await this.holdOnDemandDatabaseIfReplicated(
+          dbAddress,
+          db,
+          updates,
+        );
+      }
     } finally {
-      await this.releaseOpenDatabase(dbAddress, db);
+      db?.events?.off?.("update", onUpdate);
+      if (!heldOpen) {
+        await this.releaseOpenDatabase(dbAddress, db, context.stream);
+      }
     }
+  }
+
+  /**
+   * Decide what becomes of a database the on-demand heads handler opened, once
+   * nothing is in flight for it any more.
+   *
+   * A database that now holds entries is treated like the end of a sync pass
+   * that received updates: media in the new entries is queued for pinning, the
+   * local state is recorded as the replication proof, the database is kept
+   * open (so OrbitDB keeps answering its heads protocol and receives later
+   * messages on its topic), and heads that arrived are re-announced to the
+   * topic's subscribers. Subscribers that exchanged heads with the relay
+   * before it had them will not ask again (orbitdb/orbitdb#1255).
+   *
+   * @param dbAddress - The database's address.
+   * @param db - The database, retained by the on-demand handler.
+   * @param updates - `update` events seen while the handler held it.
+   * @returns True when the database is kept open; the handler's reference then
+   * becomes the one the held-open database keeps. False when the caller must
+   * release it, including when someone else already holds it open.
+   */
+  private async holdOnDemandDatabaseIfReplicated(
+    dbAddress: string,
+    db: any,
+    updates: any[],
+  ): Promise<boolean> {
+    if (this.isShuttingDown || !db) return false;
+    // Already held open: its update watcher handles what arrived.
+    if (this.pinnedOpenDatabases.get(dbAddress) === db) return false;
+
+    const snapshot = await this.snapshotLocalStateAfterSync(db, {
+      updates: [],
+      didReceiveUpdate: false,
+    });
+    const receivedUpdate = updates.length > 0;
+    if (!receivedUpdate && (snapshot.entryCount ?? 0) === 0) return false;
+
+    const dbName =
+      this.orbitDbNameByAddress.get(dbAddress) ??
+      (typeof db?.name === "string" && db.name ? db.name : null);
+    if (receivedUpdate) {
+      const records = updates.map((entry) => ({
+        value: entry?.payload?.value ?? entry?.value ?? entry,
+      }));
+      this.rememberKnownDatabaseAddressesFromRecords(records);
+      const extracted = this.extractImageCids(records);
+      if (extracted.length > 0) {
+        this.logDiscoveredMediaCids(dbAddress, extracted, "updates");
+        this.enqueueImageCidsForPinning(extracted, dbAddress);
+      }
+    }
+    this.recordSyncProof(dbAddress, snapshot);
+    this.pinnedOpenDatabases.set(dbAddress, db);
+    this.watchDatabaseUpdates(dbAddress, db);
+    syncLog(
+      "Holding database open after an on-demand heads exchange:",
+      inspect(
+        {
+          dbAddress,
+          dbName,
+          entryCount: snapshot.entryCount,
+          updates: updates.length,
+        },
+        { depth: null, colors: false, compact: false },
+      ),
+    );
+    if (receivedUpdate) {
+      await this.republishHeadsToSubscribers(dbAddress, db, dbName);
+    }
+    return true;
   }
 
   /**
@@ -1204,7 +1323,11 @@ export class DatabaseService {
             { depth: null, colors: false, compact: false },
           ),
         );
-        const { didReceiveUpdate, updates } = await this.waitForUpdateEvent(db);
+        const { didReceiveUpdate, updates } = await this.waitForUpdateEvent(
+          db,
+          undefined,
+          dbAddress,
+        );
         if (!didReceiveUpdate) {
           syncLog(
             "No update event received within timeout:",
@@ -2038,13 +2161,22 @@ export class DatabaseService {
    * unit). Returns immediately if the database has no event emitter, and stops
    * early on shutdown.
    *
+   * With `dbAddress`, the wait does not end while heads are still in flight
+   * ({@link DatabaseService.hasHeadsInFlight}), up to
+   * {@link HEADS_IN_FLIGHT_MAX_WAIT_MS} in all. A sync pass that found nothing
+   * closes the database, and a head whose exchange was still running at the
+   * end of a fixed window was then joined against a closed log and lost.
+   *
    * @param db - The database to observe.
-   * @param timeoutMs - Overall wait budget in ms (default 5000).
+   * @param timeoutMs - Wait budget in ms when nothing is in flight (default 5000).
+   * @param dbAddress - The database's address, to extend the wait while heads
+   * for it are in flight. Without it the budget is fixed.
    * @returns Whether any update was received and the collected update entries.
    */
   private async waitForUpdateEvent(
     db: any,
     timeoutMs = 5000,
+    dbAddress?: string,
   ): Promise<{ didReceiveUpdate: boolean; updates: any[] }> {
     if (!db?.events?.on || !db?.events?.off)
       return { didReceiveUpdate: false, updates: [] };
@@ -2061,11 +2193,16 @@ export class DatabaseService {
     db.events.on("update", onUpdate);
     try {
       const startedAt = Date.now();
-      while (
-        !didUpdate &&
-        !this.isShuttingDown &&
-        Date.now() - startedAt < timeoutMs
-      ) {
+      const inFlight = () =>
+        dbAddress != null && this.hasHeadsInFlight(dbAddress, db);
+      const withinBudget = () => {
+        const elapsed = Date.now() - startedAt;
+        return (
+          elapsed < timeoutMs ||
+          (elapsed < HEADS_IN_FLIGHT_MAX_WAIT_MS && inFlight())
+        );
+      };
+      while (!didUpdate && !this.isShuttingDown && withinBudget()) {
         await delay(100);
       }
 
@@ -2073,8 +2210,8 @@ export class DatabaseService {
       while (
         didUpdate &&
         !this.isShuttingDown &&
-        Date.now() - startedAt < timeoutMs &&
-        Date.now() - lastUpdateAt < 300
+        withinBudget() &&
+        (Date.now() - lastUpdateAt < 300 || inFlight())
       ) {
         await delay(100);
       }
@@ -2616,6 +2753,7 @@ export class DatabaseService {
     try {
       const db = await openPromise;
       this.installNonFatalDatabaseErrorHandlers(db, dbAddress);
+      this.trackJoins(db);
       return db;
     } finally {
       if (this.openInFlight.get(dbAddress)?.promise === openPromise) {
@@ -2713,18 +2851,148 @@ export class DatabaseService {
    * relay decides to keep open for replication are tracked separately in
    * {@link DatabaseService.pinnedOpenDatabases} and are not released here.
    *
+   * Before the close it waits for heads still in flight, which would otherwise
+   * be joined against a closed log and lost. If the database is retained again
+   * during that wait, the new holder closes it when it is done.
+   *
    * @param dbAddress - The address being released.
    * @param db - The database instance to close if this was the last reference.
+   * @param ignoreStream - The releasing caller's own heads stream, which is not
+   * waited for.
    */
-  private async releaseOpenDatabase(dbAddress: string, db: any): Promise<void> {
+  private async releaseOpenDatabase(
+    dbAddress: string,
+    db: any,
+    ignoreStream?: unknown,
+  ): Promise<void> {
     const current = this.databaseUseCounts.get(dbAddress) ?? 0;
     if (current <= 1) {
       this.databaseUseCounts.delete(dbAddress);
+      if (this.hasHeadsInFlight(dbAddress, db, ignoreStream)) {
+        await this.waitForHeadsInFlight(dbAddress, db, { ignoreStream });
+        if (
+          this.databaseUseCounts.has(dbAddress) ||
+          this.pinnedOpenDatabases.get(dbAddress) === db
+        ) {
+          return;
+        }
+      }
       await this.closeDatabaseSilently(db);
       return;
     }
 
     this.databaseUseCounts.set(dbAddress, current - 1);
+  }
+
+  /**
+   * Count the joins running on a database's log.
+   *
+   * OrbitDB's database joins every head it receives — over a heads exchange or
+   * a pubsub message — through `log.joinEntry`, and does not expose whether one
+   * is running. Wrapping that method on the database's own log object is the
+   * one place that sees all of them. Idempotent per log.
+   *
+   * @param db - An open database.
+   */
+  private trackJoins(db: any): void {
+    const log = db?.log;
+    if (
+      log == null ||
+      typeof log.joinEntry !== "function" ||
+      this.joinActivity.has(log)
+    ) {
+      return;
+    }
+    const activity: JoinActivity = { inFlight: 0, lastActivityAt: 0 };
+    const joinEntry = log.joinEntry;
+    log.joinEntry = async (...args: any[]) => {
+      activity.inFlight++;
+      activity.lastActivityAt = Date.now();
+      try {
+        return await joinEntry.apply(log, args);
+      } finally {
+        activity.inFlight--;
+        activity.lastActivityAt = Date.now();
+      }
+    };
+    this.joinActivity.set(log, activity);
+  }
+
+  /**
+   * Whether heads for a database may still arrive or are still being joined:
+   * a join is running on its log, or a heads-exchange stream for it is open on
+   * any connection. That includes exchanges OrbitDB's own handler took, and
+   * the ones the relay's Sync dialed.
+   *
+   * @param dbAddress - The database's address.
+   * @param db - The open database.
+   * @param ignoreStream - A stream to leave out, such as the caller's own.
+   */
+  private hasHeadsInFlight(
+    dbAddress: string,
+    db: any,
+    ignoreStream?: unknown,
+  ): boolean {
+    if ((this.joinActivity.get(db?.log)?.inFlight ?? 0) > 0) return true;
+
+    const protocol = `${ORBITDB_HEADS_PREFIX}${dbAddress}`;
+    try {
+      const connections = (this.ipfs as any)?.libp2p?.getConnections?.() ?? [];
+      for (const connection of connections) {
+        for (const stream of connection?.streams ?? []) {
+          if (stream === ignoreStream || stream?.protocol !== protocol) {
+            continue;
+          }
+          if (stream.status === "open" || stream.status === "closing") {
+            return true;
+          }
+        }
+      }
+    } catch {
+      // no connection view: only the join count is known
+    }
+    return false;
+  }
+
+  /**
+   * Wait until nothing is in flight for a database
+   * ({@link DatabaseService.hasHeadsInFlight}) and nothing has been for
+   * `quietMs`, or until {@link HEADS_IN_FLIGHT_MAX_WAIT_MS} has passed.
+   *
+   * @param dbAddress - The database's address.
+   * @param db - The open database.
+   * @param options - `ignoreStream` as for {@link DatabaseService.hasHeadsInFlight};
+   * `quietMs` (default 0) is how long the database must have been idle, counted
+   * from the start of the wait at the earliest.
+   */
+  private async waitForHeadsInFlight(
+    dbAddress: string,
+    db: any,
+    options: { ignoreStream?: unknown; quietMs?: number } = {},
+  ): Promise<void> {
+    const quietMs = options.quietMs ?? 0;
+    const startedAt = Date.now();
+    while (!this.isShuttingDown) {
+      const now = Date.now();
+      if (now - startedAt >= HEADS_IN_FLIGHT_MAX_WAIT_MS) {
+        syncLog(
+          "Heads still in flight for database after the longest wait, not waiting longer:",
+          inspect(
+            { dbAddress, waitedMs: now - startedAt },
+            { depth: null, colors: false, compact: false },
+          ),
+        );
+        return;
+      }
+      if (!this.hasHeadsInFlight(dbAddress, db, options.ignoreStream)) {
+        const lastActivityAt = Math.max(
+          startedAt,
+          this.joinActivity.get(db?.log)?.lastActivityAt ?? 0,
+        );
+        if (now - lastActivityAt >= quietMs) return;
+      }
+      await delay(50);
+    }
   }
 
   // NOTE: do NOT try to keep the relay pubsub-subscribed to a database topic
