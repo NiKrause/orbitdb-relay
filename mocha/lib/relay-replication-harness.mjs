@@ -155,7 +155,7 @@ export const createClient = async (orbitdbDirectory) => {
  * A bare relay: libp2p with the OrbitDB replication service mounted and
  * nothing else, so a test can reach `services.orbitdbReplication` directly.
  */
-export const createRelayServiceNode = async ({ storageDir, wsPort, tcpPort }) => {
+export const createRelayServiceNode = async ({ storageDir, wsPort, tcpPort, accessControllers }) => {
   const [{ initializeStorage }, { orbitdbReplicationService }] = await Promise.all([
     import('../../dist/services/storage.js'),
     import('../../dist/index.js'),
@@ -180,6 +180,7 @@ export const createRelayServiceNode = async ({ storageDir, wsPort, tcpPort }) =>
         datastore: storage.datastore,
         blockstore: storage.blockstore,
         orbitdbDirectory: join(storageDir, 'orbitdb'),
+        accessControllers,
       }),
     },
   })

@@ -53,6 +53,36 @@ The relay does not decide the controller — the database manifest does. Your ap
 access controller when it creates the database; the relay simply opens the manifest and registers
 the matching controller so it can verify entries.
 
+## Registering your own
+
+An app with its own access controller can have its databases replicated too: the
+relay registers additional controllers from its configuration, next to the built-in
+ones. A controller is what OrbitDB's `useAccessController` takes, a factory function
+with a string `type`; the module exports it as its default export (one or an array)
+or as a named `accessControllers` array.
+
+```bash
+RELAY_ACCESS_CONTROLLERS=@example/orbitdb-access-controller-contacts,./acl/notes.js orbitdb-relay
+```
+
+```ts
+import { startRelay } from 'orbitdb-relay'
+import ContactsAccessController from '@example/orbitdb-access-controller-contacts'
+
+await startRelay({ accessControllers: [ContactsAccessController] })
+// or, embedded: orbitdbReplicationService({ datastore, blockstore, accessControllers: [ContactsAccessController] })
+```
+
+- A path (`./`, `../`, absolute, `file:`) resolves against the working directory; a
+  package name resolves from where orbitdb-relay is installed, so install the package
+  next to it.
+- Only code already on the machine is loaded; nothing is fetched from the network.
+- A module that can't be imported, or exports no controller, stops the relay at start.
+- A configured type may not replace a built-in one (`ipfs`, `orbitdb`,
+  `orbitdb-deferred`, `todo-delegation`).
+- The controller runs inside the relay and decides what it accepts and pins: register
+  only code you trust, and keep its version in step with the app's.
+
 ## See also
 
 - [Identity providers](./identity-providers.md) — how the relay verifies the identities that
