@@ -11,6 +11,7 @@ import { kadDHT, removePrivateAddressesMapper } from '@libp2p/kad-dht'
 import { bootstrap } from '@libp2p/bootstrap'
 import { tcp } from '@libp2p/tcp'
 import { announceFilter } from './announce-addresses.js'
+import { withoutOrbitdbHeadsAnnouncements } from '../services/identify-announcements.js'
 import { ping } from '@libp2p/ping'
 import { autoNAT } from '@libp2p/autonat'
 import { dcutr } from '@libp2p/dcutr'
@@ -164,8 +165,12 @@ export const createLibp2pConfig = (
           defaultDurationLimit: getCircuitRelayDefaultDurationLimitMs(),
         },
       }),
-      identify: identify(),
-      identifyPush: identifyPush(),
+      // One `/orbitdb/heads/<address>` per database is answered but not
+      // announced: announcing it grew identify past the clients' 8 KiB limit,
+      // pushed the whole list to every peer on each database open or close,
+      // and handed every peer the list of databases held here (#50, #51).
+      identify: withoutOrbitdbHeadsAnnouncements(identify()),
+      identifyPush: withoutOrbitdbHeadsAnnouncements(identifyPush()),
       pubsub: gossipsub({
         allowPublishToZeroTopicPeers: true,
         // Neutralise gossipsub's punitive peer scoring for this relay. Every

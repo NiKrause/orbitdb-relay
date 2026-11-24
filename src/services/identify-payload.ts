@@ -18,9 +18,13 @@ export const IDENTIFY_DEFAULT_MAX_MESSAGE_SIZE = 8192
 export const IDENTIFY_PAYLOAD_WARN_RATIO = 0.85
 
 export type IdentifyPayloadSummary = {
-  /** Every protocol the registrar would announce. */
+  /** Every protocol identify announces. */
   protocolCount: number
-  /** The `/orbitdb/heads/*` subset — one per open database. */
+  /**
+   * The `/orbitdb/heads/*` protocols the node answers, one per database it
+   * holds open or knows. Not part of `protocolCount` or `estimatedBytes` when
+   * they are kept out of identify ({@link SummariseIdentifyPayloadOptions}).
+   */
   orbitdbHeadsProtocolCount: number
   addressCount: number
   estimatedBytes: number
@@ -31,6 +35,15 @@ export type IdentifyPayloadSummary = {
 }
 
 const ORBITDB_HEADS_PREFIX = '/orbitdb/heads/'
+
+export type SummariseIdentifyPayloadOptions = {
+  /**
+   * The node answers `/orbitdb/heads/*` but keeps it out of identify, as the
+   * relay does with `withoutOrbitdbHeadsAnnouncements`. Size the payload
+   * without those protocols.
+   */
+  excludeOrbitdbHeads?: boolean
+}
 
 /**
  * Estimate the encoded size of an identify response.
@@ -57,14 +70,19 @@ export type IdentifySource = {
 export function summariseIdentifyPayload(
   libp2p: IdentifySource | null | undefined,
   limitBytes: number = IDENTIFY_DEFAULT_MAX_MESSAGE_SIZE,
+  options: SummariseIdentifyPayloadOptions = {},
 ): IdentifyPayloadSummary {
-  const protocols = libp2p?.getProtocols?.() ?? []
+  const answered = libp2p?.getProtocols?.() ?? []
+  const orbitdbHeadsProtocolCount = answered.filter((p) => p.startsWith(ORBITDB_HEADS_PREFIX)).length
+  const protocols = options.excludeOrbitdbHeads
+    ? answered.filter((p) => !p.startsWith(ORBITDB_HEADS_PREFIX))
+    : answered
   const addresses = libp2p?.getMultiaddrs?.() ?? []
   const addressByteLengths = addresses.map((ma) => ma.bytes?.length ?? Buffer.byteLength(ma.toString()))
   const estimatedBytes = estimateIdentifyPayloadBytes(protocols, addressByteLengths)
   return {
     protocolCount: protocols.length,
-    orbitdbHeadsProtocolCount: protocols.filter((p) => p.startsWith(ORBITDB_HEADS_PREFIX)).length,
+    orbitdbHeadsProtocolCount,
     addressCount: addresses.length,
     estimatedBytes,
     limitBytes,

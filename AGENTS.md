@@ -66,7 +66,7 @@ Configured in `src/config/libp2p.ts`:
   - Circuit relay v2 server (`@libp2p/circuit-relay-v2`) with reservation limits (env-tunable via `RELAY_CIRCUIT_*`; defaults in `src/config/circuit-relay-env.ts`, see `.env.example`)
   - Pubsub: gossipsub (`@chainsafe/libp2p-gossipsub`)
   - Peer discovery: public IPFS/libp2p bootstrap nodes (`@libp2p/bootstrap`, same list as Helia/Kubo; disable with `RELAY_DISABLE_BOOTSTRAP=1`), plus pubsub-based (`@libp2p/pubsub-peer-discovery`)
-  - Identify / identifyPush, ping, AutoNAT
+  - Identify / identifyPush, ping, AutoNAT. Both identify services are wrapped with `withoutOrbitdbHeadsAnnouncements` (`src/services/identify-announcements.ts`): the relay answers every `/orbitdb/heads/<address>` but announces none, so identify stays small whatever the number of databases, opening or closing a database pushes nothing, and peers do not learn which databases the relay holds (#50, #51). Inbound streams are negotiated against the registrar's unfiltered `getProtocols()`.
   - Optional AutoTLS (`@ipshipyard/libp2p-auto-tls`) unless `disableAutoTLS` is set
   - DHT (`@libp2p/kad-dht`) registered as `aminoDHT` using protocol `/ipfs/kad/1.0.0`
   - Prometheus metrics for libp2p (`@libp2p/prometheus-metrics`)
