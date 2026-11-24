@@ -33,6 +33,10 @@ Read in `src/config/libp2p.ts`.
 | `RELAY_DISABLE_AUTONAT` | `false` | Disable the AutoNAT service. |
 | `RELAY_DISABLE_DHT` | `false` | Disable the Amino (IPFS) kad-DHT service. |
 | `RELAY_MAX_CONNECTIONS` | `1024` | Upper bound on established libp2p connections. |
+| `RELAY_INBOUND_CONNECTION_THRESHOLD` | `200` | New inbound connections per second and host. Behind the proxy every browser is the same host (127.0.0.1), so this is a limit for all of them together; the limits per client are below. |
+| `RELAY_MAX_INCOMING_PENDING_CONNECTIONS` | `256` | Inbound connections still being upgraded at once, for all hosts. |
+| `RELAY_WS_NEW_PER_SECOND_PER_IP` | `10` | New WebSocket connections per second per client, by its own IP: behind the proxy on this machine the last address in `X-Forwarded-For` (`src/services/client-limits.ts`). |
+| `RELAY_WS_MAX_OPEN_PER_IP` | `64` | Open WebSocket connections per client at a time. An upgrade over either limit is answered `429`. |
 | `VITE_APPEND_ANNOUNCE` | *(empty)* | Comma-separated public multiaddrs to advertise (behind NAT/VPS). Keep WS as plain `/ws`; AutoTLS adds `/tls/ws`. |
 | `VITE_APPEND_ANNOUNCE_DEV` | *(empty)* | Used **instead** of `VITE_APPEND_ANNOUNCE` when `NODE_ENV=development`. |
 | `NODE_ENV` | *(unset)* | When `development`, the relay reads `VITE_APPEND_ANNOUNCE_DEV` for announce addresses. |
@@ -76,7 +80,7 @@ support heavier multi-peer / test workloads.
 | --- | --- | --- |
 | `RELAY_CIRCUIT_HOP_TIMEOUT_MS` | `300000` (5 min) | Max time an incoming relay hop may take. |
 | `RELAY_CIRCUIT_MAX_RESERVATIONS` | `10000` | Max simultaneous relay reservations. |
-| `RELAY_CIRCUIT_RESERVATION_TTL_MS` | `1200000` (20 min) | How long a reservation stays valid. Short on purpose: the library never removes a reservation when its peer disconnects, so expiry is the only cleanup there is (NiKrause/orbitdb-relay#47). |
+| `RELAY_CIRCUIT_RESERVATION_TTL_MS` | `1200000` (20 min) | How long a reservation stays valid. The library never removes a reservation when its peer disconnects; the relay does that itself now, so the TTL is the cleanup only for a peer that stays connected without renewing (NiKrause/orbitdb-relay#47). |
 | `RELAY_CIRCUIT_DEFAULT_DATA_LIMIT_BYTES` | `10737418240` (10 GiB) | Max bytes per relayed connection (bigint string). |
 | `RELAY_CIRCUIT_DEFAULT_DURATION_LIMIT_MS` | `1200000` (20 min) | Max duration a single relayed circuit may stay open. |
 
@@ -105,6 +109,8 @@ Read in `src/services/metrics.ts` and `src/http/pinning-http.ts`. See the
 | `RELAY_ORBITDB_FAST_LANE_CONCURRENCY` | `8` | How many manifest-chain fetches the fast lane runs at once. On first sight of an `/orbitdb/` topic the relay fetches the blocks a peer needs to open that database (manifest and access controller) outside the sync queue. |
 | `RELAY_ORBITDB_FAST_LANE_BLOCK_TIMEOUT_MS` | `5000` | How long one block of that chain may take before the fetch gives up and cancels its want. |
 | `RELAY_ORBITDB_FAST_LANE_RETRY_MS` | `30000` | How soon a topic whose chain could not be fetched is tried again, on a later sighting. A held chain is never fetched again. |
+| `RELAY_HTTP_REQUESTS_PER_10S_PER_IP` | `20` | Requests to `/pinning/sync`, `/pinning/has-entry` and `/ipfs/*` per client in ten seconds, by its own IP as above. Over it: `429` with `Retry-After`. |
+| `RELAY_HTTP_MAX_OPEN_PER_IP` | `4` | Such requests per client at a time. |
 
 ### Deployed-mode indicators
 
