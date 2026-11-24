@@ -147,6 +147,7 @@ Human-facing route reference: **`docs/docusaurus/docs/reference/http-api.md`**.
 
 - `DATASTORE_PATH` / `RELAY_DATASTORE_PATH`: storage directory root
 - `TEST_PRIVATE_KEY` / `RELAY_PRIV_KEY`: hex-encoded protobuf private key bytes (only used when running with `--test`)
+- `RELAY_ACCESS_CONTROLLERS`: comma-separated modules with additional OrbitDB access controllers (`src/access/configured-access-controllers.ts`); built-in types cannot be replaced
 
 ### libp2p network
 

@@ -23,12 +23,15 @@ import {
 } from "../config/orbitdb-sync-env.js";
 import type { PinningHttpHandlers } from "./metrics.js";
 import { DatabaseService } from "./database.js";
+import type { AccessControllerModule } from "../access/configured-access-controllers.js";
 import { syncLog } from "../utils/logger.js";
 
 export type OrbitdbReplicationServiceInit = {
   datastore: Datastore;
   blockstore: Blockstore;
   orbitdbDirectory?: string;
+  /** Access controllers to register besides the built-in ones, e.g. an app's own. */
+  accessControllers?: AccessControllerModule[];
 };
 
 export interface OrbitdbReplicationServiceApi {
@@ -760,7 +763,7 @@ class OrbitdbReplicationService implements OrbitdbReplicationServiceApi {
     const databaseService = new DatabaseService();
 
     try {
-      await databaseService.initialize(ipfs as any, this.init.orbitdbDirectory);
+      await databaseService.initialize(ipfs as any, this.init.orbitdbDirectory, this.init.accessControllers);
       const cleanupRegistrarHooks = installOnDemandOrbitdbHeadsSupport(
         this.components.registrar,
         databaseService,

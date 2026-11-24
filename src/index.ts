@@ -27,3 +27,10 @@ export {
 } from './http/pinning-http.js'
 export { attestBridgeService, ATTEST_PROTOCOL, parseAttestHeader, clientAddressFor } from './services/attest-bridge-service.js'
 export type { AttestBridgeServiceInit } from './services/attest-bridge-service.js'
+export type { AccessControllerModule } from './access/configured-access-controllers.js'
+export {
+  ACCESS_CONTROLLERS_ENV,
+  BUILT_IN_ACCESS_CONTROLLER_TYPES,
+  loadAccessControllers,
+  parseAccessControllerSpecifiers,
+} from './access/configured-access-controllers.js'

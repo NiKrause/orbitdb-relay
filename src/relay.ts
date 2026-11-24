@@ -23,9 +23,18 @@ import {
   summariseIdentifyPayload,
 } from './services/identify-payload.js'
 import { setIdentifyPayloadProvider } from './services/metrics.js'
+import {
+  loadAccessControllersFromEnv,
+  type AccessControllerModule,
+} from './access/configured-access-controllers.js'
 
 export type RelayOptions = {
   testMode?: boolean
+  /**
+   * Access controllers to register besides the built-in ones. Added to those
+   * named in RELAY_ACCESS_CONTROLLERS.
+   */
+  accessControllers?: AccessControllerModule[]
   storageDir?: string
   debugProtocols?: ConnectivityDebugProtocolsServiceInit
   pinningHttp?: {
@@ -171,6 +180,9 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
   const debugProtocols = mergeDebugProtocolOptions(readDebugProtocolsFromEnv(), opts.debugProtocols)
   const storageDir = opts.storageDir || process.env.DATASTORE_PATH || process.env.RELAY_DATASTORE_PATH || './orbitdb/relay'
 
+  // load configured access controllers before touching storage: a module that is
+  // missing or exports none stops the relay here, with the reason
+  const accessControllers = [...(opts.accessControllers ?? []), ...(await loadAccessControllersFromEnv())]
   const storage = await initializeStorage(storageDir)
   const { blockstore, datastore } = storage
 
@@ -186,6 +198,7 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
         datastore,
         blockstore,
         orbitdbDirectory: join(storageDir, 'orbitdb'),
+        accessControllers,
       }),
       ...(debugProtocols != null
         ? {

@@ -59,6 +59,7 @@ Read in `src/config/libp2p.ts`, `src/config/orbitdb-inbound-filter-env.ts`, and 
 | `PUBSUB_TOPICS` | `todo._peer-discovery._p2p._pubsub` | Comma-separated pubsub peer-discovery topics. |
 | `VITE_PUBSUB_TOPICS` | *(unset)* | Fallback source for `PUBSUB_TOPICS` if the latter is unset. |
 | `RELAY_REQUIRE_ORBITDB_HEADS_PROTOCOL` | `false` | When true, inbound peers must advertise at least one `/orbitdb/heads/*` protocol (from Identify) or they are disconnected. Outbound dials are unaffected. Another orbitdb-relay does not advertise these protocols (it answers them without announcing), so it is disconnected too. |
+| `RELAY_ACCESS_CONTROLLERS` | *(unset)* | Comma-separated modules with additional OrbitDB access controllers to register (see [Access controllers](../guides/access-controllers.md#registering-your-own)). Paths resolve against the working directory, package names from where orbitdb-relay is installed. The relay does not start if one cannot be loaded. |
 | `RELAY_PRIV_KEY` | *(unset)* | Hex protobuf private key to inject a deterministic PeerId (applies with or without `--test`). |
 | `TEST_PRIVATE_KEY` | *(unset)* | Hex protobuf private key used only when `--test` is passed. |
 

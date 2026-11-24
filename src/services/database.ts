@@ -104,6 +104,10 @@ import { loggingConfig } from "../config/logging.js";
 import IPFSAccessController from "../access/ipfs-access-controller.js";
 import DelegatedTodoAccessControllerBase from "@le-space/orbitdb-access-controller-delegated-todo";
 import DeferredOrbitDBAccessController from "../access/deferred-orbitdb-access-controller.js";
+import {
+  registerAccessControllers,
+  type AccessControllerModule,
+} from "../access/configured-access-controllers.js";
 import { verifyIdentityWithFallback } from "../access/shared.js";
 import {
   createRelayVerifyIdentityFallback,
@@ -1545,8 +1549,11 @@ export class DatabaseService {
    * and `pins`). Stored on `this.ipfs`.
    * @param directory - Optional OrbitDB storage directory; defaults to
    * OrbitDB's own default when omitted.
+   * @param accessControllers - Additional access controllers from the
+   * operator's configuration (`RELAY_ACCESS_CONTROLLERS` or the
+   * `accessControllers` option); they may not replace a built-in type.
    */
-  async initialize(ipfs: any, directory?: string) {
+  async initialize(ipfs: any, directory?: string, accessControllers: AccessControllerModule[] = []) {
     OrbitDBIdentityProviderDID.setDIDResolver(KeyDIDResolver.getResolver());
     useIdentityProvider(OrbitDBIdentityProviderDID as any);
     // Worker WebAuthn + keystore (type: webauthn); hardware varsig (type: webauthn-varsig)
@@ -1558,6 +1565,10 @@ export class DatabaseService {
     useAccessController(IPFSAccessController as any);
     useAccessController(DelegatedTodoAccessController as any);
     useAccessController(DeferredOrbitDBAccessController as any);
+    const configuredTypes = registerAccessControllers(accessControllers);
+    if (configuredTypes.length > 0) {
+      syncLog("Registered configured access controllers:", configuredTypes);
+    }
     this.ipfs = ipfs;
 
     // Add a fallback verifier for mixed writer modes (e.g. varsig + non-varsig DID signatures).
