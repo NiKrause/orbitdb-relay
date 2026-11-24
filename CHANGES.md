@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- Depends on `@le-space/orbitdb-access-controller-decontact`; `deploy/orbitdb-relay.env.example` (and so the Aleph image) names it in `RELAY_ACCESS_CONTROLLERS`, so the relay replicates deContact address books.
 - Limits per client by its own IP, also behind the proxy on the same machine (`X-Forwarded-For`, taken from a loopback peer only): new and open WebSocket connections, and the HTTP routes that do work on request (`/pinning/sync`, `/pinning/has-entry`, `/ipfs/*`), answered `429` over them. libp2p's limits per host, which behind the proxy count all browsers as one, are raised and configurable (`src/services/client-limits.ts`, environment variables in the reference).
 - A circuit relay reservation is released when its peer disconnects, instead of staying for its whole TTL (#47).
 - Coverage in `mocha/client-limits.mjs`.

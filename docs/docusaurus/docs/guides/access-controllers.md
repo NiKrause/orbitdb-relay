@@ -83,6 +83,17 @@ await startRelay({ accessControllers: [ContactsAccessController] })
 - The controller runs inside the relay and decides what it accepts and pins: register
   only code you trust, and keep its version in step with the app's.
 
+### Bundled: deContact
+
+The relay depends on **`@le-space/orbitdb-access-controller-decontact`** (type
+`decontact-address-book`). `deploy/orbitdb-relay.env.example` names it in
+`RELAY_ACCESS_CONTROLLERS`, so relays installed from it, the Aleph image included, replicate
+[deContact](https://github.com/NiKrause/deContact) address books:
+
+- the owner (every device with the owner's DID) may write anything;
+- anybody else may write only their own contact card, with an invitation signed by the
+  owner's did:key.
+
 ## See also
 
 - [Identity providers](./identity-providers.md) — how the relay verifies the identities that

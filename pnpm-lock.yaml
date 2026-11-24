@@ -47,6 +47,9 @@ importers:
       '@ipshipyard/libp2p-auto-tls':
         specifier: ^2.0.2
         version: 2.0.2
+      '@le-space/orbitdb-access-controller-decontact':
+        specifier: ^0.1.0
+        version: 0.1.0(@orbitdb/core@4.0.0)
       '@le-space/orbitdb-access-controller-delegated-todo':
         specifier: ^0.1.0
         version: 0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)
@@ -594,6 +597,12 @@ packages:
 
   '@le-space/iso-webauthn-varsig@0.3.0':
     resolution: {integrity: sha512-qU3ptOP8ew2ZVr506N8joGsDXQNGjRq7VYBkmNdQKuFmbpDtjYyaSH2qyy0x3M8heghVzbB6SxhQM7o3U06w6Q==}
+
+  '@le-space/orbitdb-access-controller-decontact@0.1.0':
+    resolution: {integrity: sha512-ty0JuE9xuBWVhepV5upCLomLrfoh4E1pOoJqlysourCA+n18y8CWPcGs07KpQdcL3TtLTHScza3G/jG9bVKxTA==}
+    engines: {node: '>=22'}
+    peerDependencies:
+      '@orbitdb/core': ^4.0.0
 
   '@le-space/orbitdb-access-controller-delegated-todo@0.1.0':
     resolution: {integrity: sha512-IYqHNFWlwKWRXYXsxbw2pIdwRVe//YP1Y6VWmMkkl/BulOyDAkiV3Xz+CZRVAbyVscVPm5tQtjxb7fdqaLznKg==}
@@ -2322,6 +2331,9 @@ packages:
   multiformats@14.0.3:
     resolution: {integrity: sha512-l7FEUCJb3tx1UWeovywhaidQdOGQOOKTfl51G2y6CQbcOHe9dp3z90NHqQ3v2SKetKgkxwa3wI+2jsyJrjJjTg==}
 
+  multiformats@14.0.7:
+    resolution: {integrity: sha512-cakOJESELiIY9QbUL9DlnWxJE/lH7Z5hxhPWnG8PONvjMBsbE8jWGQE0ujidINS0bWOF0Knkf0iRY7e81hRgCQ==}
+
   multiformats@9.9.0:
     resolution: {integrity: sha512-HoMUjhH9T8DDBNT+6xzkrd9ga/XiBI4xLr58LJACwK6G3HTOPeMz4nB4KJs33L2BelrIJa7P0VuNaVF3hMYfjg==}
 
@@ -3811,6 +3823,13 @@ snapshots:
   '@le-space/iso-webauthn-varsig@0.3.0':
     dependencies:
       iso-base: '@le-space/iso-base@4.3.0'
+
+  '@le-space/orbitdb-access-controller-decontact@0.1.0(@orbitdb/core@4.0.0)':
+    dependencies:
+      '@ipld/dag-cbor': 9.2.6
+      '@libp2p/crypto': 5.1.22
+      '@orbitdb/core': 4.0.0
+      multiformats: 14.0.7
 
   '@le-space/orbitdb-access-controller-delegated-todo@0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)':
     dependencies:
@@ -6386,6 +6405,8 @@ snapshots:
   multiformats@13.4.2: {}
 
   multiformats@14.0.3: {}
+
+  multiformats@14.0.7: {}
 
   multiformats@9.9.0: {}
 
