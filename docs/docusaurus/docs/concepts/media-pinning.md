@@ -59,6 +59,15 @@ Notes:
   sync proof.
 - A short update-burst window is used to collect multiple closely spaced updates in the same sync
   execution.
+- The update wait does not end while heads for the database are still in flight — a
+  `/orbitdb/heads/<address>` stream is open, or an entry is still being joined — up to 15 s in
+  all. A pass that found nothing closes the database, and a head that arrived after the close
+  was lost: the peer that sent it does not send it again.
+- The on-demand heads handler, which answers for a database the relay knows but has closed,
+  likewise keeps the database open after its own exchange until nothing is in flight. The open
+  subscribes the relay to the topic, and the exchanges that subscribers dial in reply run
+  alongside it. If the database then holds entries, it is handled like a sync pass that received
+  updates: media is pinned, the proof recorded, the database kept open and its heads re-announced.
 - An explicit [`POST /pinning/sync`](../reference/http-api.md#post-pinningsync) may reconnect peers
   previously observed subscribing to the database topic. The reconnect happens only after the
   database is open and its native OrbitDB heads topology is registered.

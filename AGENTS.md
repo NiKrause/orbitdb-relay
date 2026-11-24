@@ -114,10 +114,11 @@ Event wiring in `src/events/handlers.ts`:
 Sync implementation in `DatabaseService.syncAllOrbitDBRecords(dbAddress: string)`:
 
 - Opens the OrbitDB database by `dbAddress`.
-- Waits up to ~5 seconds for an OrbitDB `update` event.
+- Waits up to ~5 seconds for an OrbitDB `update` event, longer (up to 15 s) while heads for the database are still in flight: an open `/orbitdb/heads/<address>` stream, or a join still running (`hasHeadsInFlight`). A head that arrives after the close is joined against a closed log and lost.
 - Extracts media CIDs from update entry payloads (eg `imageCid`, `profilePicture*`, `mediaId`, `mediaIds`) and enqueues pinning tasks.
 - Pinning uses Helia `pins.add()` through a non-blocking queue (concurrency 4) with dedupe sets for queued/already-pinned CIDs.
-- Closes the DB handle after sync.
+- Closes the DB handle after sync. `releaseOpenDatabase` waits for heads still in flight before any close.
+- The on-demand heads handler (`handleOnDemandHeadsProtocol`) keeps the database open after its own exchange until nothing is in flight, then holds it open like a sync pass if it now has entries (proof, media pins, heads re-announce).
 - Tracks metrics `orbitdb_sync_total` and `orbitdb_sync_duration_seconds`.
 
 Important caveat for agents:
