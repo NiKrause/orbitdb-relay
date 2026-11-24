@@ -2,6 +2,11 @@ export type { RelayOptions, RelayRuntime } from './relay.js'
 export { startRelay } from './relay.js'
 export type { OrbitdbReplicationServiceApi, OrbitdbReplicationServiceInit } from './services/orbitdb-replication-service.js'
 export { orbitdbReplicationService } from './services/orbitdb-replication-service.js'
+export {
+  announcedProtocols,
+  isOrbitdbHeadsProtocol,
+  withoutOrbitdbHeadsAnnouncements,
+} from './services/identify-announcements.js'
 export type { PinningHttpHandlers } from './services/metrics.js'
 export type { ConnectivityDebugProtocolsServiceInit } from './services/connectivity-debug-protocols-service.js'
 export {

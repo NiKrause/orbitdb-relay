@@ -111,8 +111,8 @@ import { createLibp2p } from "libp2p";
 import { LevelDatastore } from "datastore-level";
 import { LevelBlockstore } from "blockstore-level";
 import { gossipsub } from "@chainsafe/libp2p-gossipsub";
-import { identify } from "@libp2p/identify";
-import { orbitdbReplicationService } from "orbitdb-relay";
+import { identify, identifyPush } from "@libp2p/identify";
+import { orbitdbReplicationService, withoutOrbitdbHeadsAnnouncements } from "orbitdb-relay";
 
 const datastore = new LevelDatastore("./tmp/ipfs/data");
 const blockstore = new LevelBlockstore("./tmp/ipfs/blocks");
@@ -123,7 +123,8 @@ await blockstore.open();
 const libp2p = await createLibp2p({
   datastore,
   services: {
-    identify: identify(),
+    identify: withoutOrbitdbHeadsAnnouncements(identify()),
+    identifyPush: withoutOrbitdbHeadsAnnouncements(identifyPush()),
     pubsub: gossipsub(),
     orbitdbReplication: orbitdbReplicationService({
       datastore,
@@ -141,6 +142,7 @@ Notes:
 - `orbitdbReplicationService()` expects caller-owned `datastore` and `blockstore`.
 - Stopping the libp2p node stops the replication service, OrbitDB, and its Helia instance.
 - The caller still closes `datastore` and `blockstore` after `libp2p.stop()`.
+- `withoutOrbitdbHeadsAnnouncements()` keeps the per-database `/orbitdb/heads/<address>` protocols out of identify and identify-push while the node still answers them. Announced, they pass the clients' 8 KiB identify limit after about 100 databases, push the whole list to every peer on each database open or close, and list the node's databases to every peer.
 - Since `0.9.7`, subscription changes retain an in-memory database-topic-to-peer hint. `POST /pinning/sync` may reconnect those known subscribers after opening the database so OrbitDB's native heads protocol can recover a newer writer head. No application records travel through this directory.
 
 ## Supported Access Controllers

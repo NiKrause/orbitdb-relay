@@ -45,6 +45,21 @@ test('summarise counts the per-database protocols separately', () => {
 	assert.equal(s.overLimit, false)
 })
 
+test('a node that keeps heads protocols out of identify is sized without them', () => {
+	const heads = Array.from({ length: 200 }, (_, i) => `/orbitdb/heads/orbitdb/zdpu${String(i).padStart(46, 'a')}`)
+	const libp2p = {
+		getProtocols: () => ['/ipfs/id/1.0.0', '/libp2p/circuit/relay/0.2.0/hop', ...heads],
+		getMultiaddrs: () => [{ bytes: new Uint8Array(20), toString: () => '/ip4/1.2.3.4/tcp/1' }],
+	}
+	const announcing = summariseIdentifyPayload(libp2p)
+	const answering = summariseIdentifyPayload(libp2p, undefined, { excludeOrbitdbHeads: true })
+	assert.equal(announcing.overLimit, true, '200 databases announced pass the limit')
+	assert.equal(answering.protocolCount, 2)
+	assert.equal(answering.orbitdbHeadsProtocolCount, 200, 'the answered heads protocols are still reported')
+	assert.equal(answering.overLimit, false)
+	assert.equal(answering.estimatedBytes, estimateIdentifyPayloadBytes(['/ipfs/id/1.0.0', '/libp2p/circuit/relay/0.2.0/hop'], [20]))
+})
+
 test('a node without libp2p reports zero rather than throwing', () => {
 	const s = summariseIdentifyPayload(null)
 	assert.equal(s.protocolCount, 0)

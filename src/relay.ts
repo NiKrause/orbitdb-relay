@@ -224,8 +224,10 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
 
   // Identify is dropped whole once it passes the client's maxMessageSize, so a
   // relay can lose `hop` from every peer's view without anything failing
-  // locally (#50). Report the number rather than wait for the symptom.
-  const identifySummary = () => summariseIdentifyPayload(libp2p as any)
+  // locally (#50). Report the number rather than wait for the symptom. The
+  // config keeps `/orbitdb/heads/*` out of identify, so they are not counted.
+  const identifySummary = () =>
+    summariseIdentifyPayload(libp2p as any, undefined, { excludeOrbitdbHeads: true })
   setIdentifyPayloadProvider(identifySummary)
   const warnIdentifyPayload = createIdentifyPayloadWarner((message, detail) => {
     console.warn(`⚠️  ${message}`, detail)

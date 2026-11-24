@@ -53,8 +53,8 @@ import { createLibp2p } from 'libp2p'
 import { LevelDatastore } from 'datastore-level'
 import { LevelBlockstore } from 'blockstore-level'
 import { gossipsub } from '@chainsafe/libp2p-gossipsub'
-import { identify } from '@libp2p/identify'
-import { orbitdbReplicationService } from 'orbitdb-relay'
+import { identify, identifyPush } from '@libp2p/identify'
+import { orbitdbReplicationService, withoutOrbitdbHeadsAnnouncements } from 'orbitdb-relay'
 
 const datastore = new LevelDatastore('./tmp/ipfs/data')
 const blockstore = new LevelBlockstore('./tmp/ipfs/blocks')
@@ -65,7 +65,8 @@ await blockstore.open()
 const libp2p = await createLibp2p({
   datastore,
   services: {
-    identify: identify(),
+    identify: withoutOrbitdbHeadsAnnouncements(identify()),
+    identifyPush: withoutOrbitdbHeadsAnnouncements(identifyPush()),
     pubsub: gossipsub(),
     orbitdbReplication: orbitdbReplicationService({
       datastore,
@@ -83,6 +84,12 @@ Ownership rules:
 - `orbitdbReplicationService()` expects **caller-owned** `datastore` and `blockstore`.
 - Stopping the libp2p node stops the replication service, OrbitDB, and its Helia instance.
 - The caller still closes `datastore` and `blockstore` **after** `libp2p.stop()`.
+- Wrap `identify()` and `identifyPush()` with `withoutOrbitdbHeadsAnnouncements()`. OrbitDB
+  registers one `/orbitdb/heads/<address>` protocol per database, and the replication service
+  answers one for every database it knows. Announced, they grow identify past the clients' 8 KiB
+  limit after about 100 databases, push the whole list to every peer each time a database opens
+  or closes, and tell every peer which databases the node holds. The node still answers them;
+  OrbitDB dials them directly and never reads identify.
 
 For the complete mount walkthrough (transports, requirements, lifecycle, troubleshooting), see
 [libp2p integration](./libp2p-integration.md).
