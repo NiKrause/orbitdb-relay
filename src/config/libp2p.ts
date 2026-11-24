@@ -1,4 +1,5 @@
 import { noise } from '@chainsafe/libp2p-noise'
+import { connectionManagerLimitsFromEnv } from '../services/client-limits.js'
 import { quic } from '@chainsafe/libp2p-quic'
 import { yamux } from '@chainsafe/libp2p-yamux'
 import { circuitRelayTransport, circuitRelayServer } from '@libp2p/circuit-relay-v2'
@@ -215,6 +216,11 @@ export const createLibp2pConfig = (
       // unboundedly on a single relay. Generous default so the relay keeps
       // serving many browser clients; env-overridable.
       maxConnections: Number(process.env.RELAY_MAX_CONNECTIONS || 1024),
+      // Per host, libp2p limits new and pending inbound connections. Behind
+      // the proxy every browser is the same host (127.0.0.1), so these are
+      // limits for all browsers together; the limits per client are taken by
+      // the client's own IP instead (services/client-limits.ts).
+      ...connectionManagerLimitsFromEnv(),
     },
   } as any
 }

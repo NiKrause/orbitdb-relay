@@ -39,6 +39,16 @@ The default **`relay`** entrypoint registers pinning handlers, so **`/pinning/*`
 are available. Embedded consumers can reuse the same behavior via
 **`createPinningHttpRequestHandler()`** or **`PinningHttpServer`**.
 
+## Limits per client
+
+`POST /pinning/sync`, `POST /pinning/has-entry` and `GET /ipfs/*` make the relay work on
+request, so each client may start only so many: by default 20 in ten seconds and 4 at a time.
+Over that, the answer is **`429`** with `code: "too_many_requests"` and `Retry-After`. A client is
+counted by its own IP; behind a proxy on the same machine (Caddy in relay-button's image) by the
+last address in `X-Forwarded-For`, which is taken from a loopback peer only. The limits are set by
+`RELAY_HTTP_REQUESTS_PER_10S_PER_IP` and `RELAY_HTTP_MAX_OPEN_PER_IP`
+([environment variables](./environment-variables.md)).
+
 ## CORS
 
 All documented routes support **browser cross-origin** access:

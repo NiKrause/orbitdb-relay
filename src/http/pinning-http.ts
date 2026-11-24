@@ -5,6 +5,7 @@ import { CID } from 'multiformats/cid'
 
 import { RELAY_VERSION } from '../version.js'
 import { summariseIdentifyPayload } from '../services/identify-payload.js'
+import { type ClientLimiter, clientIp, createClientLimiter, httpLimitsFromEnv } from '../services/client-limits.js'
 import { redactLastRecord } from '../config/pinning-exposure-env.js'
 import type { PinningHttpHandlers } from '../services/metrics.js'
 import {
@@ -45,9 +46,12 @@ export type PinningHttpRequestHandlerOptions = {
     maxAgeSeconds?: number
   }
   getMetricsHttpsInfo?: () => Record<string, unknown> | null
+  /** Per client, for the routes that do work on request; from the environment when not given. */
+  clientLimiter?: ClientLimiter
 }
 
 export type JsonErrorCode =
+  | 'too_many_requests'
   | 'bad_request'
   | 'invalid_json'
   | 'missing_db_address'
@@ -265,6 +269,11 @@ async function streamNetworkFallback(
   }
 }
 
+/** The routes that do work on request: limited per client. */
+export function doesWorkOnRequest(pathname: string): boolean {
+  return pathname === '/pinning/sync' || pathname === '/pinning/has-entry' || pathname.startsWith('/ipfs/')
+}
+
 export function isManagedPinningHttpPath(pathname: string): boolean {
   return (
     pathname === '/health' ||
@@ -301,6 +310,8 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
     }
   }
 
+  const clientLimiter = options.clientLimiter ?? createClientLimiter(httpLimitsFromEnv())
+
   return async (req: http.IncomingMessage, res: http.ServerResponse): Promise<void> => {
     applyCorsHeaders(req, res, options.cors)
 
@@ -312,6 +323,18 @@ export function createPinningHttpRequestHandler(options: PinningHttpRequestHandl
 
     const pathname = pathnameOnly(req.url)
     const pinning = options.pinning
+
+    // What makes the relay work – a sync, a lookup, content fetched over the
+    // network – is limited per client, by its own IP behind the proxy too.
+    if (doesWorkOnRequest(pathname)) {
+      const slot = clientLimiter.acquire(clientIp(req.socket?.remoteAddress, req.headers['x-forwarded-for']))
+      if (!slot) {
+        res.setHeader('Retry-After', '10')
+        sendError(res, 429, 'too_many_requests', 'Too many requests from this client; try again later')
+        return
+      }
+      res.once('close', slot.release)
+    }
 
     if (pathname === '/health' && req.method === 'GET') {
       const libp2p = options.getLibp2p?.() ?? null

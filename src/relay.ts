@@ -4,6 +4,12 @@ import { privateKeyFromProtobuf } from '@libp2p/crypto/keys'
 import { join } from 'node:path'
 
 import { createLibp2pConfig } from './config/libp2p.js'
+import {
+  createClientLimiter,
+  guardWebSocketUpgrades,
+  releaseReservationsOnDisconnect,
+  webSocketLimitsFromEnv,
+} from './services/client-limits.js'
 import { initializeStorage } from './services/storage.js'
 import { MetricsServer } from './services/metrics.js'
 import { orbitdbReplicationService, type OrbitdbReplicationServiceApi } from './services/orbitdb-replication-service.js'
@@ -196,6 +202,9 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
     }),
   )
   attachOrbitdbHeadsStreamLogging(libp2p as any)
+  // Limits per client by its own IP, also behind the proxy (services/client-limits.ts).
+  guardWebSocketUpgrades(libp2p as any, createClientLimiter(webSocketLimitsFromEnv()))
+  const stopReleasingReservations = releaseReservationsOnDisconnect(libp2p as any)
   const orbitdbReplication = (libp2p as any).services.orbitdbReplication as OrbitdbReplicationServiceApi
   const cleanupEventHandlers = await setupEventHandlers(libp2p as any)
 
@@ -239,6 +248,7 @@ export async function startRelay(opts: RelayOptions = {}): Promise<RelayRuntime>
   return {
     stop: async () => {
       clearInterval(identifyPayloadTimer)
+      stopReleasingReservations()
       setIdentifyPayloadProvider(null)
       try {
         await cleanupEventHandlers?.()
