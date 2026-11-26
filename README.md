@@ -158,15 +158,9 @@ Notes:
 - Existing databases are opened using the manifest `accessController.type`.
 - Creating a new database without explicitly passing an `AccessController` still defaults to `orbitdb`.
 
-### `todo-delegation` package
+### `todo-delegation`
 
-The delegated todo access controller lives in **`@le-space/orbitdb-access-controller-delegated-todo`** (shared with simple-todo) so pinning uses the same `canAppend` and `verifyDelegationWriterIdentity` behavior as the browser. This relay depends on **`^0.1.0`** of that package.
-
-If `npm install` cannot resolve it yet, install from a local checkout of simple-todo:
-
-```bash
-npm install ../path/to/simple-todo/packages/orbitdb-access-controller-delegated-todo
-```
+The delegated todo access controller is part of the relay (`src/access/delegated-todo-access-controller.ts`, writer verification in `src/access/shared.ts`). It was taken from **`@le-space/orbitdb-access-controller-delegated-todo` 0.1.0** with the same rules, so pinning keeps the `canAppend` and `verifyDelegationWriterIdentity` behavior of the browser. That package's peer dependencies (`@le-space/orbitdb-identity-provider-webauthn-did` `^0.2.10`, `@orbitdb/core` `^3`) held a vulnerable provider in the relay's tree; the relay no longer depends on it.
 
 ## Identity providers (OrbitDB)
 
@@ -176,6 +170,8 @@ The relay registers OrbitDB identity providers so it can verify oplog entries fr
 - `did` — `@orbitdb/identity-provider-did`
 - `webauthn` — worker WebAuthn + keystore (e.g. Ed25519 `did:key` via keystore)
 - `webauthn-varsig` — hardware varsig identities (verification uses embedded public key only; no passkey on the server)
+
+The relay uses `@le-space/orbitdb-identity-provider-webauthn-did` **`^0.14.0`** ([GHSA-7j39-c465-x35x](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-7j39-c465-x35x)). It verifies `webauthn` identities with a proof in the current format, which 0.14.0 creates and 0.13.0 and older cannot verify, and with a proof in the first format, which every identity made before carries. The relay keeps the provider's default (`acceptLegacyProofs` unset): first-format proofs are accepted, with one console notice per process, so existing history keeps verifying. Its identities are wrapped with the provider's `withoutStaleIdentityCache`, so another identity document of the same passkey (another session, a restore, a move from a first-format proof to a current one) verifies instead of being refused by OrbitDB's cache ([orbitdb/orbitdb#1258](https://github.com/orbitdb/orbitdb/issues/1258)).
 
 ## Environment Variables (common)
 

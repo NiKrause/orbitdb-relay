@@ -1,5 +1,14 @@
 # Changes
 
+## Unreleased
+
+### Security: passkey identity provider 0.14.0
+- `@le-space/orbitdb-identity-provider-webauthn-did` goes from `^0.5.4` to `^0.14.0`, the security release for [GHSA-7j39-c465-x35x](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-7j39-c465-x35x). 0.14.0 gives new passkey identities a proof in a new format that 0.13.0 and older cannot verify, so relays have to run it before devices create such identities.
+- The relay verifies both formats: the new one, and the first one that existing identities and their history carry. It keeps the provider's default (`acceptLegacyProofs` unset), which accepts the first format with one console notice per process.
+- The relay's identities are wrapped with the provider's `withoutStaleIdentityCache`, so another identity document of the same passkey (another session, a restore, a move to a new-format proof) verifies instead of being refused by OrbitDB's cache (orbitdb/orbitdb#1258).
+- The `todo-delegation` access controller and `verifyDelegationWriterIdentity` are now part of the relay (`src/access/delegated-todo-access-controller.ts`, `src/access/shared.ts`), taken from `@le-space/orbitdb-access-controller-delegated-todo` 0.1.0 with the same rules. That package's peer dependencies (provider `^0.2.10`, `@orbitdb/core` `^3`) kept the vulnerable provider in the relay's tree; the dependency and its `pnpm.peerDependencyRules` are gone, and only provider 0.14.0 remains.
+- Coverage in `mocha/webauthn-identity-proofs.mjs`: identities in both formats, made by provider 0.14.0 with a software passkey, through the relay's identities, the `todo-delegation` controller and replication to a relay.
+
 ## v0.11.0
 
 First npm release since 0.10.11; it also carries what was tagged as 0.10.12 but never published.

@@ -50,12 +50,9 @@ importers:
       '@le-space/orbitdb-access-controller-decontact':
         specifier: ^0.1.0
         version: 0.1.0(@orbitdb/core@4.0.0)
-      '@le-space/orbitdb-access-controller-delegated-todo':
-        specifier: ^0.1.0
-        version: 0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)
       '@le-space/orbitdb-identity-provider-webauthn-did':
-        specifier: ^0.5.4
-        version: 0.5.4(@orbitdb/core@4.0.0)
+        specifier: ^0.14.0
+        version: 0.14.0(@orbitdb/core@4.0.0)
       '@libp2p/autonat':
         specifier: ^3.0.24
         version: 3.0.24
@@ -604,14 +601,8 @@ packages:
     peerDependencies:
       '@orbitdb/core': ^4.0.0
 
-  '@le-space/orbitdb-access-controller-delegated-todo@0.1.0':
-    resolution: {integrity: sha512-IYqHNFWlwKWRXYXsxbw2pIdwRVe//YP1Y6VWmMkkl/BulOyDAkiV3Xz+CZRVAbyVscVPm5tQtjxb7fdqaLznKg==}
-    peerDependencies:
-      '@le-space/orbitdb-identity-provider-webauthn-did': ^0.2.10
-      '@orbitdb/core': ^3.0.0
-
-  '@le-space/orbitdb-identity-provider-webauthn-did@0.5.4':
-    resolution: {integrity: sha512-iFq0CgvQLqd8vUHTlZ8bnurcsdDRzGcegazZ6J1ALdVmq0QJ84DiBVFyzYox0ObLzf0plYfyIwyYXgX6Vg7abg==}
+  '@le-space/orbitdb-identity-provider-webauthn-did@0.14.0':
+    resolution: {integrity: sha512-UE7/Yl+MNca1EZ1p0j5YTjQwMs/L4FcdQgLK3v2+CqWzs9ictDKBCG7wX2zqd9ZkPG01Ek7LJBM6JXYgo6Qy3Q==}
     engines: {node: '>=18.0.0'}
     peerDependencies:
       '@orbitdb/core': ^4.0.0
@@ -3831,12 +3822,7 @@ snapshots:
       '@orbitdb/core': 4.0.0
       multiformats: 14.0.7
 
-  '@le-space/orbitdb-access-controller-delegated-todo@0.1.0(@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0))(@orbitdb/core@4.0.0)':
-    dependencies:
-      '@le-space/orbitdb-identity-provider-webauthn-did': 0.5.4(@orbitdb/core@4.0.0)
-      '@orbitdb/core': 4.0.0
-
-  '@le-space/orbitdb-identity-provider-webauthn-did@0.5.4(@orbitdb/core@4.0.0)':
+  '@le-space/orbitdb-identity-provider-webauthn-did@0.14.0(@orbitdb/core@4.0.0)':
     dependencies:
       '@ipld/dag-cbor': 10.0.1
       '@ipld/dag-ucan': 3.4.5
@@ -3851,7 +3837,7 @@ snapshots:
       iso-passkeys: '@le-space/iso-passkeys@0.3.1'
       iso-web: 3.1.2
       iso-webauthn-varsig: '@le-space/iso-webauthn-varsig@0.3.0'
-      multiformats: 14.0.3
+      multiformats: 14.0.7
 
   '@le-space/ucanto-interface@11.1.1':
     dependencies:

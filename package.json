@@ -69,8 +69,7 @@
     "@ipld/dag-json": "^11.0.0",
     "@ipshipyard/libp2p-auto-tls": "^2.0.2",
     "@le-space/orbitdb-access-controller-decontact": "^0.1.0",
-    "@le-space/orbitdb-access-controller-delegated-todo": "^0.1.0",
-    "@le-space/orbitdb-identity-provider-webauthn-did": "^0.5.4",
+    "@le-space/orbitdb-identity-provider-webauthn-did": "^0.14.0",
     "@libp2p/autonat": "^3.0.24",
     "@libp2p/bootstrap": "^12.0.27",
     "@libp2p/circuit-relay-v2": "^4.2.9",
@@ -123,12 +122,6 @@
       "@peculiar/asn1-schema": "2.8.0",
       "@peculiar/asn1-x509": "2.8.0",
       "@libp2p/crypto": "5.1.22"
-    },
-    "peerDependencyRules": {
-      "allowedVersions": {
-        "@le-space/orbitdb-access-controller-delegated-todo>@le-space/orbitdb-identity-provider-webauthn-did": "0.5.4",
-        "@le-space/orbitdb-access-controller-delegated-todo>@orbitdb/core": "4.0.0"
-      }
     },
     "onlyBuiltDependencies": [
       "node-datachannel"

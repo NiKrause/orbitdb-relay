@@ -33,6 +33,34 @@ by its identity `type`:
 This lets the relay evaluate `canAppend` for databases whose writers authenticate with passkeys,
 without ever needing the passkey itself.
 
+## Proof formats (provider 0.14.0)
+
+The relay depends on `@le-space/orbitdb-identity-provider-webauthn-did` **`^0.14.0`**, the
+security release for
+[GHSA-7j39-c465-x35x](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-7j39-c465-x35x).
+A `webauthn` identity carries a WebAuthn assertion in `signatures.publicKey` that binds its signing
+key to its DID:
+
+- **Current format** — what 0.14.0 creates for every new identity. 0.13.0 and older cannot verify
+  it, so relays have to run 0.14.0 before devices create such identities.
+- **First format** — what 0.13.0 and older created. A device that stored such a proof keeps using
+  it, and everything written before is under it.
+
+The relay verifies both. It keeps the provider's default (`acceptLegacyProofs` unset): a
+first-format proof is accepted, with one console notice per process. It does not call
+`configureWebAuthn({ acceptLegacyProofs: false })`, which would stop existing history from
+verifying.
+
+The relay's identities are wrapped with the provider's `withoutStaleIdentityCache`. OrbitDB caches
+a verified identity under `signatures.id` and refuses any other document with the same id
+signature ([orbitdb/orbitdb#1258](https://github.com/orbitdb/orbitdb/issues/1258)); a passkey keeps
+its signing key, and with it `signatures.id`, while its proof changes (another session, a restore,
+a move from a first-format proof to a current one). The wrapper checks such a `webauthn` identity
+again instead of refusing it.
+
+`mocha/webauthn-identity-proofs.mjs` covers both formats with a software passkey: through the
+relay's identities, through the `todo-delegation` controller, and through replication to a relay.
+
 ## Relationship to access controllers
 
 Identity providers answer *"is this entry validly signed by the identity it claims?"*. Access
