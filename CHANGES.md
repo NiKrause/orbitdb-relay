@@ -1,6 +1,8 @@
 # Changes
 
-## Unreleased
+## v0.11.1
+
+Security release: the relay verifies passkey identities with `@le-space/orbitdb-identity-provider-webauthn-did` 0.14.0 (GHSA-7j39-c465-x35x). Relays have to run it before devices create identities with the new proof format.
 
 ### Security: passkey identity provider 0.14.0
 - `@le-space/orbitdb-identity-provider-webauthn-did` goes from `^0.5.4` to `^0.14.0`, the security release for [GHSA-7j39-c465-x35x](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-7j39-c465-x35x). 0.14.0 gives new passkey identities a proof in a new format that 0.13.0 and older cannot verify, so relays have to run it before devices create such identities.
