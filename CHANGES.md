@@ -1,6 +1,8 @@
 # Changes
 
-## Unreleased
+## v0.11.1
+
+The security release for the passkey identity provider. With 0.11.0, it is also the first Aleph image since 0.10.11 with `@libp2p/crypto` 5.1.22 ([GHSA-rvfr-cqwq-rc4j](https://github.com/advisories/GHSA-rvfr-cqwq-rc4j), #79).
 
 ### Security: passkey identity provider 0.14.0
 - `@le-space/orbitdb-identity-provider-webauthn-did` goes from `^0.5.4` to `^0.14.0`, the security release for [GHSA-7j39-c465-x35x](https://github.com/Le-Space/orbitdb-identity-provider-webauthn-did/security/advisories/GHSA-7j39-c465-x35x). 0.14.0 gives new passkey identities a proof in a new format that 0.13.0 and older cannot verify, so relays have to run it before devices create such identities.
