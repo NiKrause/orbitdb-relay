@@ -227,6 +227,7 @@ Note: `src/utils/logger.ts` uses `@libp2p/logger` namespaces under `le-space:rel
 
 - Pubsub topic strings are treated as OrbitDB addresses (see caveat above).
 - `--test` key override expects a *hex string of protobuf bytes*, not a raw seed or base64.
+- Passkey identities (`webauthn`): provider `^0.14.0` (GHSA-7j39-c465-x35x) verifies proofs in the current format and in the first one, which existing history is written under. Keep the provider's default; `configureWebAuthn({ acceptLegacyProofs: false })` would stop that history from verifying on the relay. The relay's `Identities` are wrapped with `withoutStaleIdentityCache` (orbitdb/orbitdb#1258). The `todo-delegation` controller lives in `src/access/delegated-todo-access-controller.ts` (taken from `@le-space/orbitdb-access-controller-delegated-todo` 0.1.0); keep its rules in step with simple-todo's.
 - The relay's bitswap answers peers from the local blockstore only (`withLocalBitswapLedger` in `src/services/orbitdb-replication-service.ts`). Plain `withBitswap(helia)` hands its ledger Helia's networked blockstore, and with `@helia/bitswap` < 4.0.9 one wanted block the relay lacks stalls every reply queued with it (#66).
 - Sync waits for update events before enqueueing pin jobs; if no update is observed during timeout, no new media pin enqueue occurs in that sync run.
 - Shutdown now attempts coordinated queue/listener teardown, metrics server close, OrbitDB stop, and IPFS/libp2p stop; ordering still matters when extending lifecycle code.

@@ -26,19 +26,23 @@ browser does, it must register the **same** access controller the application us
 access-controller package version drifts from the app's, verification of a custom AC's own store
 can fail — see [Version compatibility](../reference/version-compatibility.md).
 
-## The `todo-delegation` package
+## The `todo-delegation` controller
 
-The delegated todo access controller lives in
-**`@le-space/orbitdb-access-controller-delegated-todo`** (shared with
-[simple-todo](https://github.com/NiKrause/simple-todo)) so pinning uses the same `canAppend` and
-`verifyDelegationWriterIdentity` behavior as the browser. This relay depends on **`^0.1.0`** of
-that package.
+The delegated todo access controller is part of the relay
+(`src/access/delegated-todo-access-controller.ts`, writer verification in `src/access/shared.ts`).
+It was taken from **`@le-space/orbitdb-access-controller-delegated-todo` 0.1.0**, which
+[simple-todo](https://github.com/Le-Space/simple-todo) uses, with the same rules, so pinning
+keeps the `canAppend` and `verifyDelegationWriterIdentity` behavior of the browser:
 
-If `npm install` cannot resolve it yet, install from a local checkout of simple-todo:
+- the owner writes through OrbitDB's `OrbitDBAccessController`;
+- a delegate's `PUT` under `delegation-action/<taskKey>/<encoded delegate DID>/<id>` is admitted
+  when its value is a `delegation-action` (`set-completed` with a boolean `setCompleted`, or
+  `patch-fields` with string `text` and/or `description`) matching the key, not past its
+  `expiresAt`, and written by a verified identity whose id is the delegate DID.
 
-```bash
-npm install ../path/to/simple-todo/packages/orbitdb-access-controller-delegated-todo
-```
+That package declares peer dependencies on `@le-space/orbitdb-identity-provider-webauthn-did`
+`^0.2.10` and `@orbitdb/core` `^3`, and kept a vulnerable provider in the relay's tree
+(GHSA-7j39-c465-x35x). The relay verifies with the provider it depends on itself.
 
 ## Choosing a controller
 

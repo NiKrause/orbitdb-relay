@@ -27,8 +27,8 @@
  *     the built-in `orbitdb` controller from @orbitdb/core plus the local
  *     `ipfs` ({@link IPFSAccessController}), `orbitdb-deferred`
  *     ({@link DeferredOrbitDBAccessController}) and `todo-delegation`
- *     ({@link DelegatedTodoAccessController} / DelegatedTodoAccessControllerBase)
- *     controllers.
+ *     ({@link DelegatedTodoAccessController}, the rules of simple-todo's delegated
+ *     lists) controllers.
  *   - Identity-provider registration: `publickey` (built into @orbitdb/core),
  *     `did`, `webauthn` and `webauthn-varsig`, plus a relay-side identity
  *     verification fallback for mixed writer modes.
@@ -80,6 +80,7 @@ import {
 import {
   OrbitDBWebAuthnIdentityProviderFunction,
   verifyVarsigIdentity,
+  withoutStaleIdentityCache,
 } from "@le-space/orbitdb-identity-provider-webauthn-did";
 import OrbitDBIdentityProviderDID from "@orbitdb/identity-provider-did";
 import * as KeyDIDResolver from "key-did-resolver";
@@ -102,7 +103,7 @@ import {
 import { syncLog, logSyncStats } from "../utils/logger.js";
 import { loggingConfig } from "../config/logging.js";
 import IPFSAccessController from "../access/ipfs-access-controller.js";
-import DelegatedTodoAccessControllerBase from "@le-space/orbitdb-access-controller-delegated-todo";
+import DelegatedTodoAccessController from "../access/delegated-todo-access-controller.js";
 import DeferredOrbitDBAccessController from "../access/deferred-orbitdb-access-controller.js";
 import {
   registerAccessControllers,
@@ -114,13 +115,6 @@ import {
   defaultRelayVerifyIdentityDeps,
 } from "../identity/relay-verify-fallback.js";
 import { inspectWorkerEd25519Identity } from "../identity/worker-ed25519.js";
-
-/** Relay: same delegated AC as clients, without verbose browser logging. */
-const DelegatedTodoAccessController = (opts: { write?: string[] } = {}) =>
-  DelegatedTodoAccessControllerBase({ ...opts, verbose: false });
-(DelegatedTodoAccessController as any).type = (
-  DelegatedTodoAccessControllerBase as any
-).type;
 
 const DEFERRED_ACL_PREFIX = "/orbitdb-deferred/";
 const ORBITDB_PREFIX = "/orbitdb/";
@@ -1571,8 +1565,15 @@ export class DatabaseService {
     }
     this.ipfs = ipfs;
 
+    // OrbitDB caches a verified identity under `signatures.id` and refuses any
+    // other identity document with the same id signature. A passkey keeps its
+    // signing key, and with it `signatures.id`, in every session while the
+    // WebAuthn proof in `signatures.publicKey` changes: another session, a
+    // restore on a second device, or a device moving from a first-format proof
+    // to the current one (provider 0.14.0). The provider's wrapper checks such
+    // a webauthn identity again instead of refusing it (orbitdb/orbitdb#1258).
+    const baseIdentities = withoutStaleIdentityCache(await Identities({ ipfs }));
     // Add a fallback verifier for mixed writer modes (e.g. varsig + non-varsig DID signatures).
-    const baseIdentities = await Identities({ ipfs });
     const relayIdentities = {
       ...baseIdentities,
       // Only run DID JWS verification for `did` identities. The DID provider's verifyIdentity

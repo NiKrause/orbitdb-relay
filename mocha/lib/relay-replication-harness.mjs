@@ -114,7 +114,21 @@ const createHeliaWithLibp2p = (libp2p) => {
   )
 }
 
-export const createClient = async (orbitdbDirectory) => {
+/**
+ * @param {string} orbitdbDirectory
+ * @param {{ makeIdentity?: (ipfs: any) => Promise<{ identities: any, identity: any }> }} [options]
+ *   `makeIdentity` gives the client an identity of its own (eg a passkey identity) built
+ *   on its IPFS node; without it OrbitDB creates its default `publickey` identity.
+ */
+export const createClient = async (orbitdbDirectory, { makeIdentity } = {}) => {
+  const { libp2p, ipfs } = await createHeliaNode()
+  const own = makeIdentity ? await makeIdentity(ipfs) : {}
+  const orbitdb = await createOrbitDB({ ipfs, directory: orbitdbDirectory, ...own })
+  return { libp2p, ipfs, orbitdb }
+}
+
+/** libp2p (TCP and WebSockets on 127.0.0.1, ephemeral ports) with Helia on top, no OrbitDB. */
+export const createHeliaNode = async () => {
   const discoveryTopics = (process.env.PUBSUB_TOPICS || process.env.VITE_PUBSUB_TOPICS || 'todo._peer-discovery._p2p._pubsub')
     .split(',')
     .map((t) => t.trim())
@@ -147,8 +161,7 @@ export const createClient = async (orbitdbDirectory) => {
   })
 
   const ipfs = await createHeliaWithLibp2p(libp2p).start()
-  const orbitdb = await createOrbitDB({ ipfs, directory: orbitdbDirectory })
-  return { libp2p, ipfs, orbitdb }
+  return { libp2p, ipfs }
 }
 
 /**

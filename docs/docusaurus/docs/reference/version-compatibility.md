@@ -17,7 +17,7 @@ databases that depend on it.
 | --- | --- | --- |
 | **Relay image** | The deployed `orbitdb-relay` build (container / rootfs) actually running as the pinner. | `orbitdb-relay` package version — currently **v0.10.1**. |
 | **relay-button `tooling_ref` tag** | The tag [relay-button](https://github.com/NiKrause/relay-button) deploys when it stands a relay up. It selects which relay build (and its bundled AC/identity versions) goes live. | relay-button deployment config. |
-| **`@le-space/orbitdb-access-controller-delegated-todo`** | The delegated todo access controller shared between the app (simple-todo) and the relay. | Relay depends on **`^0.1.0`**; the app must match. |
+| **`todo-delegation` controller** | The delegated todo access controller of the app (simple-todo). The relay carries its own copy, taken from `@le-space/orbitdb-access-controller-delegated-todo` 0.1.0. | `src/access/delegated-todo-access-controller.ts`; its rules must match the app's. |
 
 If the app ships one version of the access controller and the relay ships another, the AC's own
 store (the delegation/authorization store the controller reads from) can diverge in manifest or
@@ -44,20 +44,18 @@ For reference, the relay currently pins (see `package.json`):
 
 | Dependency | Version | Notes |
 | --- | --- | --- |
-| `@le-space/orbitdb-access-controller-delegated-todo` | `^0.1.0` | Must match the app. |
-| `@le-space/orbitdb-identity-provider-webauthn-did` | `^0.3.1` | Passkey/DID identity stack; must match the app's identities. |
+| `@le-space/orbitdb-identity-provider-webauthn-did` | `^0.14.0` | Passkey/DID identity stack. Verifies both proof formats (see [Identity providers](../guides/identity-providers.md#proof-formats-provider-0140)); relays must run it before devices create current-format proofs. |
 | `@orbitdb/core` | `^4.0.0` | OrbitDB major line. |
 | `@libp2p/gossipsub` | pinned `16.1.0` | Pinned via package overrides; see [Sync & the #1255 workaround](../concepts/sync-and-1255-workaround.md). |
 
-The package's `pnpm.peerDependencyRules` additionally pin the delegated-todo controller's transitive
-`@le-space/orbitdb-identity-provider-webauthn-did` and `@orbitdb/core` versions, so the controller
-verifies identities exactly as the app does.
+The `todo-delegation` controller verifies writers with the relay's own provider, so there is no
+second copy of the provider in the relay's tree.
 
 ## Practical rule
 
 When you bump any one of these, bump the others in the same change:
 
-1. Update `@le-space/orbitdb-access-controller-delegated-todo` in **both** the app and the relay.
+1. Change the delegation rules in **both** the app and the relay's `todo-delegation` controller.
 2. Publish/deploy a matching **relay image**.
 3. Point relay-button's **`tooling_ref`** at that relay build.
 
